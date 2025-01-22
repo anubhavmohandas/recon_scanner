@@ -107,9 +107,6 @@ Use this tool responsibly. Unauthorized scanning may be illegal. Always obtain p
 - Informative error messages
 - Resource cleanup
 
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
 
 ## 🤝 Contributing
 
