@@ -30,7 +30,7 @@ import queue
 
 
 # Change from ARM-specific to general
-MAX_THREADS = min(psutil.cpu_count() * 4, 100)  # Increased for more powerful CPUs
+MAX_THREADS = min(psutil.cpu_count() * 4, 100) 
 
 # Architecture detection
 ARCH = platform.machine()
