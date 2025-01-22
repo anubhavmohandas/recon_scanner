@@ -1,7 +1,7 @@
 # RECON Scanner
 ![ARM Compatible](https://img.shields.io/badge/ARM-Compatible-green)
 ![Python](https://img.shields.io/badge/Python-3.7%2B-blue)
-![License](https://img.shields.io/badge/License-MIT-yellow)
+<!-- ![License](https://img.shields.io/badge/License-MIT-yellow) -->
 
 A powerful and optimized reconnaissance tool designed specifically for ARM architecture. This tool provides comprehensive domain reconnaissance capabilities with enhanced performance on ARM-based systems.
 
