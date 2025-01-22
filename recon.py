@@ -22,11 +22,24 @@ import signal
 from collections import defaultdict
 import queue
 
-# ARM-optimized constants
-MAX_THREADS = min(psutil.cpu_count() * 2, 50)
-SOCKET_TIMEOUT = 3
+# # ARM-optimized constants
+# MAX_THREADS = min(psutil.cpu_count() * 2, 50)
+# SOCKET_TIMEOUT = 3
+# DNS_TIMEOUT = 5
+# BATCH_SIZE = 50
+
+
+# Change from ARM-specific to general
+MAX_THREADS = min(psutil.cpu_count() * 4, 100)  # Increased for more powerful CPUs
+
+# Architecture detection
+ARCH = platform.machine()
+SOCKET_TIMEOUT = 2 if ARCH.startswith('arm') else 1
+
+# Adjust batch sizes based on architecture
+BATCH_SIZE = 50 if ARCH.startswith('arm') else 100
+
 DNS_TIMEOUT = 5
-BATCH_SIZE = 50
 
 class PortScanner:
     def __init__(self, target, start_port=1, end_port=1024):
