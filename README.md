@@ -1,137 +1,171 @@
 # RECON Scanner
+
 ![ARM Compatible](https://img.shields.io/badge/ARM-Compatible-green)
 ![Python](https://img.shields.io/badge/Python-3.7%2B-blue)
-<!-- ![License](https://img.shields.io/badge/License-MIT-yellow) -->
+![Tools](https://img.shields.io/badge/Tools-Amass%20%7C%20Assetfinder-orange)
 
-A powerful and optimized reconnaissance tool designed specifically for ARM architecture. This tool provides comprehensive domain reconnaissance capabilities with enhanced performance on ARM-based systems.
+A powerful and optimized reconnaissance tool designed specifically for ARM and x86 architectures. This tool provides comprehensive domain reconnaissance capabilities with enhanced performance.
 
 ## 🚀 Features
 
-- **Optimized Port Scanning**
-  - Batch processing
-  - Service detection
-  - Banner grabbing
-  - ARM-specific threading
+### 🔍 Reconnaissance Capabilities
+- Automated and manual scanning modes
+- Domain resolution and IP tracking
+- Comprehensive scanning techniques
 
-- **DNS Reconnaissance**
-  - Advanced DNS enumeration
-  - Multiple record type support
-  - Caching mechanism
+### 🌐 DNS Reconnaissance
+- Multiple DNS record type enumeration
+- Support for A, AAAA, MX, NS, TXT, SOA, CNAME records
+- Advanced DNS resolver with caching
 
-- **Subdomain Discovery**
-  - DNS-based enumeration
-  - Wordlist-based scanning
-  - Memory-efficient processing
-  - C99.nl integration
+### 🔒 Port Scanning
+- Multi-threaded port scanning
+- Service and banner detection
+- ARM and x86 optimized scanning
+- Configurable port range (1-1024 by default)
 
-- **Additional Features**
-  - WHOIS information gathering
-  - HTTP header analysis
-  - Web technology detection
-  - Interactive CLI interface
+### 🕸️ Subdomain Enumeration
+- Multiple discovery methods:
+  - Amass
+  - Assetfinder
+  - SecurityTrails API
+- Consolidated subdomain results
+
+### 🌍 Web Technology Detection
+- BuiltWith API integration
+- Technology stack identification
+
+### 📋 Additional Features
+- WHOIS information retrieval
+- HTTP header analysis
+- Colorful, interactive CLI
+- Platform-specific optimization
 
 ## 📋 Prerequisites
 
+### Supported Systems
+- Linux distributions (Kali, Ubuntu, Debian, CentOS)
+- ARM and x86 architectures
 - Python 3.7+
-- ARM-based system
-- Internet connection
-- Required Python packages
 
 ## 🔧 Installation
 
+### Quick Install Script (Recommended)
+
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/recon-scanner.git
+git clone https://github.com/anubhavmohandas/recon-scanner.git
 cd recon-scanner
 ```
 
-2. Install dependencies:
+2. Download the Installation Script:
 ```bash
-pip install -r requirements.txt
+wget https://raw.githubusercontent.com/anubhavmohandas/recon-scanner/main/install_recon_tools.sh
 ```
-```bash (For Kali Linux)
-pip install -r requirements.txt --break-system-packages
+
+3. Run the Installation Script:
+```bash
+# Make the script executable
+chmod +x install_recon_tools.sh
+
+# Install with sudo privileges
+sudo bash install_recon_tools.sh
+```
+
+### Manual Installation (Alternative Method)
+
+#### Install System Dependencies
+```bash
+# For Debian/Ubuntu/Kali
+sudo apt update
+sudo apt install -y python3 python3-pip golang git wget
+
+# For CentOS/RHEL
+sudo yum update
+sudo yum install -y python3 python3-pip golang git wget
+```
+
+#### Install Go Tools
+```bash
+# Install Amass
+go install -v github.com/OWASP/Amass/v3/...@master
+
+# Install Assetfinder
+go get -u github.com/tomnomnom/assetfinder
+```
+
+#### Install Python Dependencies
+```bash
+# Standard installation
+pip3 install -r requirements.txt
+
+# Kali Linux (if needed)
+pip3 install -r requirements.txt --break-system-packages
 ```
 
 ## 🚦 Usage
 
-Run the tool:
+### Running the Tool
 ```bash
 python3 recon.py
 ```
 
-### Menu Options:
-1. **Automated Process** - Complete reconnaissance
-2. **Manual Process** - Individual scanning options
-   - Full Reconnaissance
-   - DNS Enumeration
-   - Port Scanning
-   - Subdomain Enumeration
-   - Web Technology Detection
-   - WHOIS Information
-   - Subdomain Finder Integration
+### Menu Options
+1. **Automated Process**
+   - Comprehensive domain reconnaissance
+2. **Manual Process**
+   - Individual scanning modules:
+     - Full Reconnaissance
+     - DNS Enumeration
+     - Port Scanning
+     - Subdomain Enumeration
+     - Web Technology Detection
+     - WHOIS Information
 
 ## ⚙️ Configuration
 
-Key parameters in the script:
+### API Keys (Optional)
+Create an `api_keys.txt` file with:
+```
+SECURITY_TRAILS_API_KEY=your_securitytrails_key
+BUILTWITH_API_KEY=your_builtwith_key
+```
 
+### Performance Tuning
 ```python
-MAX_THREADS = min(psutil.cpu_count() * 2, 50)
-SOCKET_TIMEOUT = 3
-DNS_TIMEOUT = 5
-BATCH_SIZE = 50
+# Adjust in script for system optimization
+MAX_THREADS = min(psutil.cpu_count() * 4, 100)
+SOCKET_TIMEOUT = 2  # ARM-optimized
+BATCH_SIZE = 50     # Configurable batch size
 ```
 
-Adjust these values based on your system's capabilities.
+## 🛡️ Safety & Ethics
 
-## 📊 Sample Output
-
-```plaintext
-[+] Starting optimized port scan for example.com...
-  - Port 80: http - Banner: Apache/2.4.41
-  - Port 443: https
-  - Port 22: ssh - Banner: OpenSSH_8.2p1
-
-[+] DNS Records:
-  A Records:
-    - 93.184.216.34
-  MX Records:
-    - mail.example.com
-```
-
-## 🛡️ Safety Note
-
-Use this tool responsibly. Unauthorized scanning may be illegal. Always obtain permission before scanning any domains you don't own.
-
-## 🔍 Error Handling
-
-- Graceful termination with CTRL+C
-- Comprehensive error catching
-- Informative error messages
-- Resource cleanup
-
+### Important Considerations
+- Use only on domains you own or have explicit permission
+- Respect legal and ethical boundaries
+- Do not use for malicious purposes
 
 ## 🤝 Contributing
-
 1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
+2. Create feature branch
+3. Commit changes
+4. Push to branch
+5. Create Pull Request
 
-## 🐛 Bug Reports
+## 🐛 Troubleshooting
+- Ensure all dependencies are installed
+- Check API keys are correctly configured
+- Verify tool permissions
+- Report issues with system specifications
 
-Report bugs by creating issues on GitHub with:
-- Expected behavior
-- Actual behavior
-- Steps to reproduce
-- System information
+## 📜 License
+[To be added - Currently no specific license]
 
-## ✨ Acknowledgments
-
-- [Anubhav Mohandas](https://github.com/anubhavmohandas) - Original Author
-- ARM Architecture Community
-- Open Source Security Tools Community
+## 🙏 Acknowledgments
+- Anubhav Mohandas - Original Author
+- Open-Source Community
+- ARM & x86 Development Communities
 
 ---
-Made with ❤️ for ARM Architecture
+Made with ❤️ for Reconnaissance
