@@ -1,10 +1,5 @@
-#!/usr/bin/env python3
 
-"""
-Enhanced Reconnaissance Tool for ARM Architecture
-Author: Cybernyx
-Version: 2.0
-"""
+#!/usr/bin/env python3
 
 import socket
 import whois
@@ -13,7 +8,7 @@ import dns.resolver
 import dns.rdatatype
 from bs4 import BeautifulSoup
 from datetime import datetime
-from colorama import Fore, Style
+from colorama import Fore, Style, init
 from prettytable import PrettyTable
 import concurrent.futures
 import platform
@@ -21,25 +16,81 @@ import psutil
 import signal
 from collections import defaultdict
 import queue
+import subprocess
+import json
+import os
 
+init()
 # # ARM-optimized constants
 # MAX_THREADS = min(psutil.cpu_count() * 2, 50)
 # SOCKET_TIMEOUT = 3
 # DNS_TIMEOUT = 5
 # BATCH_SIZE = 50
 
-
-# Change from ARM-specific to general
-MAX_THREADS = min(psutil.cpu_count() * 4, 100) 
-
-# Architecture detection
+# ARM-optimized constants
+MAX_THREADS = min(psutil.cpu_count() * 4, 100)
 ARCH = platform.machine()
 SOCKET_TIMEOUT = 2 if ARCH.startswith('arm') else 1
-
-# Adjust batch sizes based on architecture
 BATCH_SIZE = 50 if ARCH.startswith('arm') else 100
-
 DNS_TIMEOUT = 5
+
+class APIKeyManager:
+    @staticmethod
+    def load_api_keys(file_path='api_keys.txt'):
+        api_keys = {}
+        try:
+            with open(file_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        key, value = line.split('=', 1)
+                        api_keys[key.strip()] = value.strip()
+        except FileNotFoundError:
+            print(f"[-] {file_path} not found. Create the file and add API keys.")
+        return api_keys
+
+class SecurityTrails:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.base_url = "https://api.securitytrails.com/v1"
+        self.headers = {
+            "Accept": "application/json",
+            "APIKEY": api_key
+        }
+
+    def get_subdomains(self, domain):
+        endpoint = f"{self.base_url}/domain/{domain}/subdomains"
+        try:
+            response = requests.get(endpoint, headers=self.headers)
+            if response.status_code == 200:
+                data = response.json()
+                return [f"{sub}.{domain}" for sub in data.get("subdomains", [])]
+            print(f"[-] SecurityTrails API error: {response.status_code}")
+            return []
+        except Exception as e:
+            print(f"[-] SecurityTrails API error: {e}")
+            return []
+
+class BuiltWithTech:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.base_url = "https://api.builtwith.com/v21/api.json"
+
+    def get_technologies(self, domain):
+        try:
+            params = {
+                'key': self.api_key,
+                'lookup': domain
+            }
+            response = requests.get(self.base_url, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('Results', {}).get('Technologies', [])
+            print(f"[-] BuiltWith API error: {response.status_code}")
+            return []
+        except Exception as e:
+            print(f"[-] BuiltWith API error: {e}")
+            return []
 
 class PortScanner:
     def __init__(self, target, start_port=1, end_port=1024):
@@ -55,7 +106,7 @@ class PortScanner:
             try:
                 service = socket.getservbyport(port)
                 self.service_map[port] = service
-            except (OSError, socket.error):
+            except:
                 continue
 
     def _scan_port_batch(self, start, end):
@@ -67,7 +118,7 @@ class PortScanner:
                         service = self.service_map.get(port, "unknown")
                         banner = self._grab_banner(self.target, port)
                         self.results.put((port, service, banner))
-            except Exception:
+            except:
                 continue
 
     def _grab_banner(self, target, port):
@@ -76,15 +127,13 @@ class PortScanner:
                 s.settimeout(SOCKET_TIMEOUT)
                 s.connect((target, port))
                 return s.recv(1024).decode().strip()
-        except Exception:
+        except:
             return ""
 
     def scan(self):
         port_ranges = [(i, i + BATCH_SIZE) for i in range(self.start_port, self.end_port + 1, BATCH_SIZE)]
-        
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
             executor.map(lambda x: self._scan_port_batch(*x), port_ranges)
-        
         return list(self.results.queue)
 
 class DNSEnumerator:
@@ -99,7 +148,7 @@ class DNSEnumerator:
     def get_records(self, record_type):
         try:
             return self.resolver.resolve(self.domain, record_type)
-        except Exception:
+        except:
             return []
 
     def enumerate(self):
@@ -110,42 +159,27 @@ class DNSEnumerator:
                 records[rtype].append(str(answer))
         return records
 
-class SubdomainEnumerator:
-    def __init__(self, domain, wordlist=None):
-        self.domain = domain
-        self.wordlist = wordlist
-        self.found_subdomains = set()
-        self.dns_enum = DNSEnumerator(domain)
+def run_amass(domain):
+    try:
+        print("[*] Running Amass...")
+        result = subprocess.run(["amass", "enum", "-d", domain], 
+                              capture_output=True, text=True)
+        subdomains = result.stdout.strip().split('\n')
+        return [sub for sub in subdomains if sub]
+    except Exception as e:
+        print(f"[-] Amass error: {e}")
+        return []
 
-    def _check_subdomain(self, subdomain):
-        try:
-            full_domain = f"{subdomain}.{self.domain}"
-            answers = socket.getaddrinfo(full_domain, None)
-            if answers:
-                self.found_subdomains.add((full_domain, str(answers[0][4][0])))
-        except Exception:
-            pass
-
-    def enumerate_from_wordlist(self):
-        if not self.wordlist:
-            return
-
-        try:
-            with open(self.wordlist) as f:
-                subdomains = [line.strip() for line in f]
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS) as executor:
-                list(executor.map(self._check_subdomain, subdomains))
-        except FileNotFoundError:
-            print(f"[-] Wordlist file not found: {self.wordlist}")
-
-    def enumerate_from_dns(self):
-        records = self.dns_enum.enumerate()
-        for rtype, answers in records.items():
-            for answer in answers:
-                if self.domain in answer:
-                    subdomain = answer.split('.')[0]
-                    self._check_subdomain(subdomain)
+def run_assetfinder(domain):
+    try:
+        print("[*] Running Assetfinder...")
+        result = subprocess.run(["assetfinder", "--subs-only", domain], 
+                              capture_output=True, text=True)
+        subdomains = result.stdout.strip().split('\n')
+        return [sub for sub in subdomains if sub]
+    except Exception as e:
+        print(f"[-] Assetfinder error: {e}")
+        return []
 
 def print_banner():
     banner = f"""
@@ -183,8 +217,7 @@ def print_manual_menu():
 {Fore.CYAN}[4]{Fore.RESET} Subdomain Enumeration Only
 {Fore.CYAN}[5]{Fore.RESET} Web Technology Detection Only
 {Fore.CYAN}[6]{Fore.RESET} WHOIS Information Only
-{Fore.CYAN}[7]{Fore.RESET} Fetch Subdomains from Subdomain Finder
-{Fore.CYAN}[8]{Fore.RESET} Back to Main Menu
+{Fore.CYAN}[7]{Fore.RESET} Back to Main Menu
 {Style.RESET_ALL}"""
     print(menu)
 
@@ -196,17 +229,17 @@ def resolve_dns(domain):
         ip_address = socket.gethostbyname(domain)
         print(f"[+] Resolved IP: {ip_address}")
         return ip_address
-    except (socket.gaierror, dns.exception.Timeout) as e:
+    except Exception as e:
         print(f"[-] Could not resolve domain: {e}")
         return None
 
-def scan_ports(domain, start_port=1, end_port=1024):
+def scan_ports(domain):
     print(f"[+] Starting optimized port scan for {domain}...")
     ip = resolve_dns(domain)
     if not ip:
         return
     
-    scanner = PortScanner(ip, start_port, end_port)
+    scanner = PortScanner(ip)
     results = scanner.scan()
     
     if results:
@@ -235,7 +268,7 @@ def perform_whois(domain):
         whois_info = whois.whois(domain)
         print("[+] WHOIS Information:")
         for key, value in whois_info.items():
-            if value:  # Only print non-empty values
+            if value:
                 if isinstance(value, (list, tuple)):
                     print(f"  {key}:")
                     for item in value:
@@ -260,50 +293,66 @@ def gather_dns_records(domain):
             for answer in answers:
                 print(f"    - {answer}")
 
-def enumerate_subdomains(domain, wordlist=None):
-    print(f"[+] Starting comprehensive subdomain enumeration for {domain}...")
-    enumerator = SubdomainEnumerator(domain, wordlist)
+def perform_subdomain_enum(domain, api_keys):
+    print("\n[*] Choose subdomain enumeration method:")
+    print("1. Amass")
+    print("2. Assetfinder")
+    print("3. SecurityTrails (requires API key)")
+    print("4. All methods")
+    print("5. Skip subdomain enumeration")
     
-    print("[*] Enumerating from DNS records...")
-    enumerator.enumerate_from_dns()
+    enum_choice = input("\nEnter your choice: ")
+    all_subdomains = []
     
-    if wordlist:
-        print(f"[*] Enumerating using wordlist: {wordlist}")
-        enumerator.enumerate_from_wordlist()
+    if enum_choice in ["1", "4"]:
+        amass_results = run_amass(domain)
+        if amass_results:
+            print("\n[+] Amass Results:")
+            for subdomain in amass_results:
+                print(f"  - {subdomain}")
+            all_subdomains.extend(amass_results)
     
-    if enumerator.found_subdomains:
-        print(f"\n[+] Discovered {len(enumerator.found_subdomains)} subdomains:")
-        for subdomain, ip in sorted(enumerator.found_subdomains):
-            print(f"  - {subdomain} ({ip})")
-    else:
-        print("[-] No subdomains found.")
-
-def fetch_subdomains_c99(domain):
-    print(f"[+] Fetching subdomains for {domain} from Subdomain Finder...")
-    url = "https://subdomainfinder.c99.nl/"
-    headers = {
-        "User-Agent": f"ReconTool/2.0 ({platform.system()}; {platform.machine()})"
-    }
-    data = {"domain": domain}
-
-    try:
-        response = requests.post(url, headers=headers, data=data, timeout=SOCKET_TIMEOUT)
-        response.raise_for_status()
-        
-        soup = BeautifulSoup(response.text, "html.parser")
-        subdomains = soup.find_all("a", class_="subdomain")
-
-        if subdomains:
-            print(f"[+] Discovered Subdomains ({len(subdomains)}):")
-            for subdomain in subdomains:
-                print(f"  - {subdomain.text}")
+    if enum_choice in ["2", "4"]:
+        assetfinder_results = run_assetfinder(domain)
+        if assetfinder_results:
+            print("\n[+] Assetfinder Results:")
+            for subdomain in assetfinder_results:
+                print(f"  - {subdomain}")
+            all_subdomains.extend(assetfinder_results)
+    
+    if enum_choice in ["3", "4"]:
+        st_api_key = api_keys.get('SECURITY_TRAILS_API_KEY', '')
+        if st_api_key:
+            st = SecurityTrails(st_api_key)
+            st_results = st.get_subdomains(domain)
+            if st_results:
+                print("\n[+] SecurityTrails Results:")
+                for subdomain in st_results:
+                    print(f"  - {subdomain}")
+                all_subdomains.extend(st_results)
         else:
-            print("[-] No subdomains found or access denied.")
+            print("\n[-] No SecurityTrails API key found. Skipping.")
+    
+    return list(set(all_subdomains))
 
-    except requests.exceptions.RequestException as e:
-        print(f"[-] Error fetching subdomains: {e}")
+def detect_web_technologies(domain, api_keys):
+    builtwith_api_key = api_keys.get('BUILTWITH_API_KEY', '')
+    if builtwith_api_key:
+        try:
+            bt = BuiltWithTech(builtwith_api_key)
+            technologies = bt.get_technologies(domain)
+            if technologies:
+                print("[+] Web Technologies:")
+                for tech in technologies:
+                    print(f"  - {tech}")
+            else:
+                print("[-] No technologies detected.")
+        except Exception as e:
+            print(f"[-] Web technology detection failed: {e}")
+    else:
+        print("[-] No BuiltWith API key found. Skipping web technology detection.")
 
-def automated_process():
+def automated_process(api_keys):
     target_url = input("Enter the target domain or URL: ")
     print("\n[INFO] Starting automated reconnaissance...")
     ip = resolve_dns(target_url)
@@ -312,73 +361,75 @@ def automated_process():
         fetch_http_headers(target_url)
         perform_whois(target_url)
         gather_dns_records(target_url)
-        fetch_subdomains_c99(target_url)
+        detect_web_technologies(target_url, api_keys)
+        perform_subdomain_enum(target_url, api_keys)
 
-def manual_process():
+def manual_process(api_keys):
     while True:
         print_manual_menu()
         choice = input("\nEnter your choice: ")
 
-        if choice == "1":
+        if choice == "1":  # Full Reconnaissance
             target_domain = input("Enter the target domain: ")
-            print("\n[INFO] Starting full reconnaissance...")
             ip = resolve_dns(target_domain)
             if ip:
                 scan_ports(target_domain)
                 fetch_http_headers(target_domain)
                 perform_whois(target_domain)
                 gather_dns_records(target_domain)
-                wordlist = input("Enter the path to the subdomain wordlist: ")
-                enumerate_subdomains(target_domain, wordlist)
-                fetch_subdomains_c99(target_domain)
-        elif choice == "2":
+                detect_web_technologies(target_domain, api_keys)
+                perform_subdomain_enum(target_domain, api_keys)
+
+        elif choice == "2":  # DNS Enumeration Only
             target_domain = input("Enter the target domain: ")
             gather_dns_records(target_domain)
-        elif choice == "3":
+
+        elif choice == "3":  # Port Scanning Only
             target_domain = input("Enter the target domain: ")
             scan_ports(target_domain)
-        elif choice == "4":
+
+        elif choice == "4":  # Subdomain Enumeration Only
             target_domain = input("Enter the target domain: ")
-            wordlist = input("Enter the path to the subdomain wordlist: ")
-            enumerate_subdomains(target_domain, wordlist)
-        elif choice == "5":
+            perform_subdomain_enum(target_domain, api_keys)
+
+        elif choice == "5":  # Web Technology Detection Only
             target_domain = input("Enter the target domain: ")
-            fetch_http_headers(target_domain)
-        elif choice == "6":
+            detect_web_technologies(target_domain, api_keys)
+
+        elif choice == "6":  # WHOIS Information Only
             target_domain = input("Enter the target domain: ")
             perform_whois(target_domain)
-        elif choice == "7":
-            target_domain = input("Enter the target domain: ")
-            fetch_subdomains_c99(target_domain)
-        elif choice == "8":
-            print("[INFO] Returning to main menu...")
+
+        elif choice == "7":  # Back to Main Menu
             break
+        
         else:
-            print("[-] Invalid choice. Please try again.")
+            print(f"{Fore.RED}[-] Invalid choice. Please try again.{Style.RESET_ALL}")
 
 def main():
-    try:
-        print_banner()
-        while True:
-            print_menu()
-            choice = input("\nEnter your choice: ")
+    print_banner()
+    api_keys = APIKeyManager.load_api_keys()
 
-            if choice == "1":
-                automated_process()
-            elif choice == "2":
-                manual_process()
-            elif choice == "3":
-                print("[INFO] Exiting... Goodbye!")
-                break
-            else:
-                print("[-] Invalid choice. Please try again.")
-    except KeyboardInterrupt:
-        print("\n[!] Program terminated by user.")
-    except Exception as e:
-        print(f"\n[!] An unexpected error occurred: {e}")
-    finally:
-        print("[*] Cleaning up...")
+    while True:
+        print_menu()
+        choice = input("\nEnter your choice: ")
+
+        if choice == "1":  # Automate Process
+            automated_process(api_keys)
+        
+        elif choice == "2":  # Manual Process
+            manual_process(api_keys)
+        
+        elif choice == "3":  # Exit
+            print(f"{Fore.GREEN}[*] Exiting Recon Tool. Goodbye!{Style.RESET_ALL}")
+            break
+        
+        else:
+            print(f"{Fore.RED}[-] Invalid choice. Please try again.{Style.RESET_ALL}")
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, lambda signum, frame: None)
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(f"\n{Fore.YELLOW}[*] Interrupted by user. Exiting...{Style.RESET_ALL}")
+        exit(0)
