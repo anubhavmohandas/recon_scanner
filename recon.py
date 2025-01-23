@@ -1,4 +1,5 @@
 
+
 #!/usr/bin/env python3
 
 import socket
@@ -19,8 +20,17 @@ import queue
 import subprocess
 import json
 import os
+import hashlib
+import ssl
+import OpenSSL
+
+# Additional imports
+from ipwhois import IPWhois
+import wappalyzer
+from wappalyzer import Wappalyzer, WebPage
 
 init()
+
 # # ARM-optimized constants
 # MAX_THREADS = min(psutil.cpu_count() * 2, 50)
 # SOCKET_TIMEOUT = 3
@@ -71,26 +81,243 @@ class SecurityTrails:
             print(f"[-] SecurityTrails API error: {e}")
             return []
 
-class BuiltWithTech:
+class IPRangeResolver:
+    @staticmethod
+    def get_ip_range(ip):
+        """
+        Resolve IP range using ipwhois library
+        
+        Args:
+            ip (str): IP address to resolve
+        
+        Returns:
+            dict: IP range and network information
+        """
+        try:
+            ipwhois = IPWhois(ip)
+            result = ipwhois.lookup_rdap()
+            return {
+                'cidr': result['network']['cidr'],
+                'name': result['network'].get('name', 'N/A'),
+                'country': result['network'].get('country', 'N/A')
+            }
+        except Exception as e:
+            print(f"[-] IP Range resolution error: {e}")
+            return None
+
+class SSLInformation:
+    @staticmethod
+    def get_ssl_details(domain, port=443):
+        """
+        Get SSL/TLS certificate details
+        
+        Args:
+            domain (str): Target domain
+            port (int): SSL port (default 443)
+        
+        Returns:
+            dict: SSL certificate details
+        """
+        try:
+            context = ssl.create_default_context()
+            with socket.create_connection((domain, port)) as sock:
+                with context.wrap_socket(sock, server_hostname=domain) as secure_sock:
+                    cert = secure_sock.getpeercert(binary_form=False)
+                    
+                    return {
+                        'issuer': dict(x[0] for x in cert['issuer']),
+                        'subject': dict(x[0] for x in cert['subject']),
+                        'version': cert.get('version', 'N/A'),
+                        'notBefore': cert.get('notBefore', 'N/A'),
+                        'notAfter': cert.get('notAfter', 'N/A')
+                    }
+        except Exception as e:
+            print(f"[-] SSL details retrieval error: {e}")
+            return None
+
+class FileHashCollector:
+    @staticmethod
+    def collect_file_hash(file_path, hash_type='sha256'):
+        """
+        Calculate file hash
+        
+        Args:
+            file_path (str): Path to file
+            hash_type (str): Hash algorithm (default sha256)
+        
+        Returns:
+            str: File hash
+        """
+        try:
+            hash_func = getattr(hashlib, hash_type)()
+            with open(file_path, 'rb') as f:
+                for chunk in iter(lambda: f.read(8192), b''):
+                    hash_func.update(chunk)
+            return hash_func.hexdigest()
+        except Exception as e:
+            print(f"[-] File hash collection error: {e}")
+            return None
+
+class VirusTotalScanner:
     def __init__(self, api_key):
         self.api_key = api_key
-        self.base_url = "https://api.builtwith.com/v21/api.json"
+        self.base_url = 'https://www.virustotal.com/vtapi/v2/'
+        self.headers = {
+            'apikey': api_key
+        }
 
-    def get_technologies(self, domain):
+    def scan_url(self, url):
+        """
+        Scan a URL using VirusTotal
+        
+        Args:
+            url (str): URL to scan
+        
+        Returns:
+            dict: Scan results
+        """
         try:
-            params = {
-                'key': self.api_key,
-                'lookup': domain
-            }
-            response = requests.get(self.base_url, params=params)
+            params = {'url': url}
+            response = requests.post(f'{self.base_url}url/scan', headers=self.headers, params=params)
+            
             if response.status_code == 200:
-                data = response.json()
-                return data.get('Results', {}).get('Technologies', [])
-            print(f"[-] BuiltWith API error: {response.status_code}")
-            return []
+                scan_result = response.json()
+                print(f"[+] VirusTotal URL Scan Initiated: {scan_result.get('scan_id', 'N/A')}")
+                return scan_result
+            else:
+                print(f"[-] VirusTotal URL Scan Failed: {response.status_code}")
+                return None
         except Exception as e:
-            print(f"[-] BuiltWith API error: {e}")
-            return []
+            print(f"[-] VirusTotal URL Scan Error: {e}")
+            return None
+
+    def get_url_report(self, url):
+        """
+        Get URL scan report
+        
+        Args:
+            url (str): URL to check
+        
+        Returns:
+            dict: Detailed scan report
+        """
+        try:
+            params = {'apikey': self.api_key, 'resource': url}
+            response = requests.get(f'{self.base_url}url/report', params=params)
+            
+            if response.status_code == 200:
+                report = response.json()
+                if report.get('response_code') == 1:
+                    positives = report.get('positives', 0)
+                    total = report.get('total', 0)
+                    
+                    print(f"[+] VirusTotal URL Report:")
+                    print(f"    Detected Malicious: {positives}/{total}")
+                    
+                    if positives > 0:
+                        print("    Suspicious Engines:")
+                        for engine, result in report.get('scans', {}).items():
+                            if result.get('detected', False):
+                                print(f"    - {engine}: {result.get('result', 'Malicious')}")
+                    
+                    return report
+                else:
+                    print("[-] VirusTotal: URL not found in database")
+                    return None
+            else:
+                print(f"[-] VirusTotal URL Report Failed: {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"[-] VirusTotal URL Report Error: {e}")
+            return None
+
+    def scan_file(self, file_path):
+        """
+        Scan a file using VirusTotal
+        
+        Args:
+            file_path (str): Path to file to scan
+        
+        Returns:
+            dict: Scan results
+        """
+        try:
+            with open(file_path, 'rb') as f:
+                files = {'file': f}
+                response = requests.post(f'{self.base_url}file/scan', headers={'apikey': self.api_key}, files=files)
+            
+            if response.status_code == 200:
+                scan_result = response.json()
+                print(f"[+] VirusTotal File Scan Initiated: {scan_result.get('resource', 'N/A')}")
+                return scan_result
+            else:
+                print(f"[-] VirusTotal File Scan Failed: {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"[-] VirusTotal File Scan Error: {e}")
+            return None
+
+    def get_file_report(self, file_hash):
+        """
+        Get file scan report by hash
+        
+        Args:
+            file_hash (str): MD5, SHA-1, or SHA-256 hash of the file
+        
+        Returns:
+            dict: Detailed file scan report
+        """
+        try:
+            params = {'apikey': self.api_key, 'resource': file_hash}
+            response = requests.get(f'{self.base_url}file/report', params=params)
+            
+            if response.status_code == 200:
+                report = response.json()
+                if report.get('response_code') == 1:
+                    positives = report.get('positives', 0)
+                    total = report.get('total', 0)
+                    
+                    print(f"[+] VirusTotal File Report:")
+                    print(f"    Detected Malicious: {positives}/{total}")
+                    
+                    if positives > 0:
+                        print("    Suspicious Engines:")
+                        for engine, result in report.get('scans', {}).items():
+                            if result.get('detected', False):
+                                print(f"    - {engine}: {result.get('result', 'Malicious')}")
+                    
+                    return report
+                else:
+                    print("[-] VirusTotal: File not found in database")
+                    return None
+            else:
+                print(f"[-] VirusTotal File Report Failed: {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"[-] VirusTotal File Report Error: {e}")
+            return None
+
+class WappalyzerTechDetector:
+    def __init__(self):
+        self.wappalyzer = Wappalyzer.latest()
+
+    def detect_technologies(self, url):
+        """
+        Detect web technologies using Wappalyzer
+        
+        Args:
+            url (str): Target URL
+        
+        Returns:
+            list: Detected technologies
+        """
+        try:
+            webpage = WebPage.new_from_url(url)
+            technologies = self.wappalyzer.analyze(webpage)
+            return list(technologies)
+        except Exception as e:
+            print(f"[-] Wappalyzer technology detection error: {e}")
+            return None
 
 class PortScanner:
     def __init__(self, target, start_port=1, end_port=1024):
@@ -217,7 +444,12 @@ def print_manual_menu():
 {Fore.CYAN}[4]{Fore.RESET} Subdomain Enumeration Only
 {Fore.CYAN}[5]{Fore.RESET} Web Technology Detection Only
 {Fore.CYAN}[6]{Fore.RESET} WHOIS Information Only
-{Fore.CYAN}[7]{Fore.RESET} Back to Main Menu
+{Fore.CYAN}[7]{Fore.RESET} IP Range Lookup
+{Fore.CYAN}[8]{Fore.RESET} SSL/TLS Information
+{Fore.CYAN}[9]{Fore.RESET} File Hash Collection
+{Fore.CYAN}[10]{Fore.RESET} VirusTotal URL Scan
+{Fore.CYAN}[11]{Fore.RESET} VirusTotal File Scan
+{Fore.CYAN}[12]{Fore.RESET} Back to Main Menu
 {Style.RESET_ALL}"""
     print(menu)
 
@@ -288,6 +520,26 @@ def perform_subdomain_enum(domain, api_keys):
     
     return list(set(all_subdomains))
 
+def detect_web_technologies(domain, api_keys=None):
+    try:
+        url = f"http://{domain}"
+        wappalyzer_detector = WappalyzerTechDetector()
+        technologies = wappalyzer_detector.detect_technologies(url)
+        
+        if technologies:
+            print("[+] Web Technologies:")
+            tech_details = []
+            for tech in technologies:
+                print(f"  - {tech}")
+                tech_details.append(tech)
+            return tech_details
+        else:
+            print("[-] No technologies detected by Wappalyzer.")
+            return None
+    except Exception as e:
+        print(f"[-] Web technology detection failed: {e}")
+        return None
+
 def scan_ports(domain):
     print(f"[+] Starting optimized port scan for {domain}...")
     ip = resolve_dns(domain)
@@ -354,36 +606,6 @@ def gather_dns_records(domain):
     
     return dns_records
 
-def detect_web_technologies(domain, api_keys):
-    builtwith_api_key = api_keys.get('BUILTWITH_API_KEY', '').strip()
-    if builtwith_api_key:
-        try:
-            print(f"[*] Detecting web technologies for {domain} using BuiltWith API...")
-            bt = BuiltWithTech(builtwith_api_key)
-            technologies = bt.get_technologies(domain)
-            if technologies:
-                print("[+] Web Technologies:")
-                tech_details = []
-                for tech in technologies:
-                    # Extract and print technology details more comprehensively
-                    tech_name = tech.get('Name', 'Unknown')
-                    tech_category = tech.get('Category', 'Unknown')
-                    print(f"  - {tech_name} (Category: {tech_category})")
-                    tech_details.append({
-                        'name': tech_name,
-                        'category': tech_category
-                    })
-                return tech_details
-            else:
-                print("[-] No technologies detected by BuiltWith API.")
-                return None
-        except Exception as e:
-            print(f"[-] Web technology detection failed: {e}")
-            return None
-    else:
-        print("[-] No BuiltWith API key found in api_keys.txt. Please add BUILTWITH_API_KEY=your_api_key")
-        return None
-# Add a new function to save output
 def save_output(data, domain):
     """
     Prompt user to save output to a file
@@ -444,6 +666,16 @@ def automated_process(api_keys):
     if ip:
         results['DNS_Resolution'] = ip
         
+        # New: IP Range Lookup
+        ip_range_info = IPRangeResolver.get_ip_range(ip)
+        if ip_range_info:
+            results['IP_Range'] = ip_range_info
+        
+        # New: SSL Information
+        ssl_info = SSLInformation.get_ssl_details(target_url)
+        if ssl_info:
+            results['SSL_Info'] = ssl_info
+        
         port_results = scan_ports(target_url)
         if port_results:
             results['Open_Ports'] = port_results
@@ -458,7 +690,7 @@ def automated_process(api_keys):
         if dns_records:
             results['DNS_Records'] = dns_records
         
-        technologies = detect_web_technologies(target_url, api_keys)
+        technologies = detect_web_technologies(target_url)
         if technologies:
             results['Web_Technologies'] = technologies
         
@@ -481,6 +713,16 @@ def manual_process(api_keys):
             if ip:
                 results['DNS_Resolution'] = ip
                 
+                # New: IP Range Lookup
+                ip_range_info = IPRangeResolver.get_ip_range(ip)
+                if ip_range_info:
+                    results['IP_Range'] = ip_range_info
+                
+                # New: SSL Information
+                ssl_info = SSLInformation.get_ssl_details(target_domain)
+                if ssl_info:
+                    results['SSL_Info'] = ssl_info
+                
                 port_results = scan_ports(target_domain)
                 if port_results:
                     results['Open_Ports'] = port_results
@@ -495,7 +737,7 @@ def manual_process(api_keys):
                 if dns_records:
                     results['DNS_Records'] = dns_records
                 
-                technologies = detect_web_technologies(target_domain, api_keys)
+                technologies = detect_web_technologies(target_domain)
                 if technologies:
                     results['Web_Technologies'] = technologies
                 
@@ -520,13 +762,59 @@ def manual_process(api_keys):
 
         elif choice == "5":  # Web Technology Detection Only
             target_domain = input("Enter the target domain: ")
-            detect_web_technologies(target_domain, api_keys)
+            detect_web_technologies(target_domain)
 
         elif choice == "6":  # WHOIS Information Only
             target_domain = input("Enter the target domain: ")
             perform_whois(target_domain)
 
-        elif choice == "7":  # Back to Main Menu
+        elif choice == "7":  # IP Range Lookup
+            target_ip = input("Enter an IP address: ")
+            ip_range_info = IPRangeResolver.get_ip_range(target_ip)
+            if ip_range_info:
+                print("[+] IP Range Information:")
+                for key, value in ip_range_info.items():
+                    print(f"  {key.capitalize()}: {value}")
+
+        elif choice == "8":  # SSL/TLS Information
+            target_domain = input("Enter the target domain: ")
+            ssl_info = SSLInformation.get_ssl_details(target_domain)
+            if ssl_info:
+                print("[+] SSL/TLS Information:")
+                for key, value in ssl_info.items():
+                    print(f"  {key}: {value}")
+
+        elif choice == "9":  # File Hash Collection
+            file_path = input("Enter the file path: ")
+            file_hash = FileHashCollector.collect_file_hash(file_path)
+            if file_hash:
+                print(f"[+] File Hash (SHA256): {file_hash}")
+
+        elif choice == "10":  # VirusTotal URL Scan
+            vt_api_key = api_keys.get('VIRUSTOTAL_API_KEY', '')
+            if vt_api_key:
+                url = input("Enter the URL to scan: ")
+                vt_scanner = VirusTotalScanner(vt_api_key)
+                vt_scanner.scan_url(url)
+                vt_scanner.get_url_report(url)
+            else:
+                print("[-] No VirusTotal API key found.")
+
+        elif choice == "11":  # VirusTotal File Scan
+            vt_api_key = api_keys.get('VIRUSTOTAL_API_KEY', '')
+            if vt_api_key:
+                file_path = input("Enter the file path to scan: ")
+                vt_scanner = VirusTotalScanner(vt_api_key)
+                file_scan = vt_scanner.scan_file(file_path)
+                if file_scan:
+                    # Get file hash for report
+                    file_hash = FileHashCollector.collect_file_hash(file_path)
+                    if file_hash:
+                        vt_scanner.get_file_report(file_hash)
+            else:
+                print("[-] No VirusTotal API key found.")
+
+        elif choice == "12":  # Back to Main Menu
             break
         
         else:
@@ -559,118 +847,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}[*] Interrupted by user. Exiting...{Style.RESET_ALL}")
         exit(0)
-
-
-'''
-### 1. **IP Range Lookup:**
-   - **ipwhois**: A Python library that allows you to query Whois data to get information like IP ranges for a domain.
-     ```bash
-     pip install ipwhois
-     ```
-     Example usage:
-     ```python
-     from ipwhois import IPWhois
-
-     def get_ip_range(ip):
-         ipwhois = IPWhois(ip)
-         result = ipwhois.lookup_rdap()
-         print(result['network']['cidr'])  # This will give you the IP range (CIDR)
-     ```
-   - **ipinfo**: A service that provides IP details including ranges. You can use their API to get data.
-     ```bash
-     pip install ipinfo
-     ```
-     Example usage:
-     ```python
-     import ipinfo
-
-     def get_ip_info(ip):
-         handler = ipinfo.getHandler('your_api_key')
-         details = handler.getDetails(ip)
-         print(details.all)
-     ```
-
-### 2. **Gathering SSL/TLS Information:**
-   - **sslscan**: While `sslscan` itself is a command-line tool, you can invoke it from Python using the `subprocess` module.
-   - **pyopenssl**: This library can be used to programmatically access SSL/TLS information.
-     ```bash
-     pip install pyopenssl
-     ```
-     Example usage:
-     ```python
-     from OpenSSL import SSL
-     import socket
-
-     def get_ssl_details(domain):
-         context = SSL.Context(SSL.TLSv1_2_METHOD)
-         connection = SSL.Connection(context, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-         connection.connect((domain, 443))
-         connection.do_handshake()
-         cert = connection.get_peer_certificate()
-         print(cert.get_subject())  # Certificate details
-     ```
-   - **sslyze**: Another Python tool that analyzes SSL/TLS configurations.
-     ```bash
-     pip install sslyze
-     ```
-     Example usage:
-     ```python
-     from sslyze import *
-
-     def ssl_scan(domain):
-         scanner = Scanner()
-         scanner.queue_domain(domain)
-         results = scanner.get_results()
-         print(results)
-     ```
-
-### 3. **File Hash Collection:**
-   - **hashlib**: Python's built-in library for generating MD5, SHA1, SHA256 hashes.
-     Example usage:
-     ```python
-     import hashlib
-
-     def get_file_hash(file_path, hash_type='sha256'):
-         hash_func = getattr(hashlib, hash_type)()
-         with open(file_path, 'rb') as f:
-             while chunk := f.read(8192):
-                 hash_func.update(chunk)
-         return hash_func.hexdigest()
-
-     print(get_file_hash('file.txt', 'sha256'))
-     ```
-   - **VirusTotal API**: You can use the VirusTotal API to check file hashes. You'll need to register for an API key.
-     ```bash
-     pip install requests
-     ```
-     Example usage:
-     ```python
-     import requests
-
-     def check_hash_in_virustotal(hash):
-         api_key = 'your_api_key'
-         url = f'https://www.virustotal.com/vtapi/v2/file/report'
-         params = {'apikey': api_key, 'resource': hash}
-         response = requests.get(url, params=params)
-         return response.json()
-
-     print(check_hash_in_virustotal('your_file_hash'))
-     ```
-
-### 4. **Harvester Tool (Email, Subdomain Enumeration, etc.):**
-   - **theHarvester**: A Python wrapper around the `theHarvester` tool can help you gather emails, subdomains, and other domain-related information.
-     Example usage:
-     ```bash
-     pip install theharvester
-     ```
-     Example usage:
-     ```python
-     from theHarvester import Harvester
-
-     def harvest_emails(domain):
-         harvester = Harvester()
-         results = harvester.run(domain)
-         for email in results.get('emails', []):
-             print(email)
-     ```
-'''
