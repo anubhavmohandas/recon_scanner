@@ -49,6 +49,9 @@ cd recon-scanner
 ```bash
 pip install -r requirements.txt
 ```
+```bash (For Kali Linux)
+pip install -r requirements.txt --break-system-packages
+```
 
 ## 🚦 Usage
 
