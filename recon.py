@@ -423,10 +423,13 @@ def save_output(data, domain):
                         if isinstance(value, list):
                             for item in value:
                                 f.write(f"  - {item}\n")
+                        elif isinstance(value, dict):
+                            for sub_key, sub_value in value.items():
+                                f.write(f"  {sub_key}: {sub_value}\n")
                         else:
                             f.write(f"  {value}\n")
+                        f.write("\n")
                 print(f"[+] Text output saved to {txt_path}")
-        
         except Exception as e:
             print(f"[-] Error saving output: {e}")
     else:
