@@ -1,86 +1,95 @@
-# RECON Scanner
+# 🔍 RECON Scanner: Advanced Reconnaissance Tool
+
+## 🌟 Overview
+
+RECON Scanner is a powerful, optimized reconnaissance tool designed for comprehensive domain and network analysis. Developed with ARM and x86 architectures in mind, this tool provides advanced scanning and enumeration capabilities for security professionals, researchers, and penetration testers.
 
 ![ARM Compatible](https://img.shields.io/badge/ARM-Compatible-green)
 ![Python](https://img.shields.io/badge/Python-3.7%2B-blue)
 ![Tools](https://img.shields.io/badge/Tools-Amass%20%7C%20Assetfinder-orange)
 
-A powerful and optimized reconnaissance tool designed specifically for ARM and x86 architectures. This tool provides comprehensive domain reconnaissance capabilities with enhanced performance.
+## 🚀 Key Features
 
-## 🚀 Features
+### 🌐 Comprehensive Reconnaissance
+- **Automated and Manual Scanning Modes**
+- Detailed domain and network intelligence gathering
+- Platform-agnostic design (ARM and x86 support)
 
-### 🔍 Reconnaissance Capabilities
-- Automated and manual scanning modes
-- Domain resolution and IP tracking
-- Comprehensive scanning techniques
+### 🔍 Advanced Scanning Capabilities
+- **DNS Enumeration**
+  - Multiple record type support (A, AAAA, MX, NS, TXT, SOA, CNAME)
+  - Advanced DNS resolver with caching mechanism
+  - Configurable DNS timeout and resolution strategies
 
-### 🌐 DNS Reconnaissance
-- Multiple DNS record type enumeration
-- Support for A, AAAA, MX, NS, TXT, SOA, CNAME records
-- Advanced DNS resolver with caching
+- **Port Scanning**
+  - Multi-threaded, architecture-optimized scanning
+  - Configurable port range (default: 1-1024)
+  - Service and banner detection
+  - Intelligent timeout and batch processing
 
-### 🔒 Port Scanning
-- Multi-threaded port scanning
-- Service and banner detection
-- ARM and x86 optimized scanning
-- Configurable port range (1-1024 by default)
+- **Subdomain Enumeration**
+  - Integration with multiple discovery tools:
+    - Amass
+    - Assetfinder
+    - SecurityTrails API
+  - Consolidated and deduplicated results
 
-### 🕸️ Subdomain Enumeration
-- Multiple discovery methods:
-  - Amass
-  - Assetfinder
-  - SecurityTrails API
-- Consolidated subdomain results
+### 🕵️ Additional Intelligence Gathering
+- Web Technology Detection
+- WHOIS Information Retrieval
+- IP Range Lookup
+- SSL/TLS Certificate Analysis
+- HTTP Header Extraction
+- VirusTotal URL and File Scanning
 
-### 🌍 Web Technology Detection
-- BuiltWith API integration
-- Technology stack identification
-
-### 📋 Additional Features
-- WHOIS information retrieval
-- HTTP header analysis
+### 🎨 User Experience
 - Colorful, interactive CLI
-- Platform-specific optimization
+- Flexible output formats (JSON, Text)
+- Configurable scan parameters
+- Detailed error handling and reporting
 
-## 📋 Prerequisites
+## 💻 System Requirements
 
-### Supported Systems
-- Linux distributions (Kali, Ubuntu, Debian, CentOS)
-- ARM and x86 architectures
+### Supported Platforms
+- Linux Distributions:
+  - Kali Linux
+  - Ubuntu
+  - Debian
+  - CentOS
+- Architectures:
+  - ARM
+  - x86
 - Python 3.7+
+- Go 1.21+
 
-## 🔧 Installation
+## 🛠️ Installation
 
-### Quick Install Script (Recommended)
+### Automated Installation (Recommended)
 
-1. Clone the repository:
 ```bash
+# Clone the repository
 git clone https://github.com/anubhavmohandas/recon-scanner.git
 cd recon-scanner
-```
 
-2. Download the Installation Script:
-```bash
+# Download installation script
 wget https://raw.githubusercontent.com/anubhavmohandas/recon-scanner/main/install_recon_tools.sh
-```
 
-3. Run the Installation Script:
-```bash
-# Make the script executable
+# Make script executable
 chmod +x install_recon_tools.sh
 
-# Install with sudo privileges
+# Run installation with sudo
 sudo bash install_recon_tools.sh
 ```
 
-### Manual Installation (Alternative Method)
+### Manual Installation
 
-#### Install System Dependencies
+#### System Dependencies
 ```bash
-# For Debian/Ubuntu/Kali
+# Debian/Ubuntu/Kali
 sudo apt update
 sudo apt install -y python3 python3-pip golang git wget
 
-# For CentOS/RHEL
+# CentOS/RHEL
 sudo yum update
 sudo yum install -y python3 python3-pip golang git wget
 ```
@@ -99,8 +108,25 @@ go get -u github.com/tomnomnom/assetfinder
 # Standard installation
 pip3 install -r requirements.txt
 
-# Kali Linux (if needed)
+# Kali Linux
 pip3 install -r requirements.txt --break-system-packages
+```
+
+## 🔧 Configuration
+
+### API Keys (Optional)
+Create an `api_keys.txt` file with optional API keys:
+```
+SECURITY_TRAILS_API_KEY=your_securitytrails_key
+VIRUSTOTAL_API_KEY=your_virustotal_key
+```
+
+### Performance Tuning
+Adjust scanning parameters in the script:
+```python
+MAX_THREADS = min(psutil.cpu_count() * 4, 100)
+SOCKET_TIMEOUT = 2  # ARM-optimized
+BATCH_SIZE = 50     # Configurable batch size
 ```
 
 ## 🚦 Usage
@@ -111,61 +137,47 @@ python3 recon.py
 ```
 
 ### Menu Options
-1. **Automated Process**
-   - Comprehensive domain reconnaissance
-2. **Manual Process**
-   - Individual scanning modules:
-     - Full Reconnaissance
-     - DNS Enumeration
-     - Port Scanning
-     - Subdomain Enumeration
-     - Web Technology Detection
-     - WHOIS Information
+1. **Automated Process**: Comprehensive domain reconnaissance
+2. **Manual Process**: Granular scanning modules
+   - Full Reconnaissance
+   - DNS Enumeration
+   - Port Scanning
+   - Subdomain Discovery
+   - Web Technology Detection
+   - WHOIS Lookup
+   - IP Range Analysis
+   - SSL/TLS Information
+   - File Hash Collection
+   - VirusTotal Scanning
 
-## ⚙️ Configuration
+## 🛡️ Ethical Considerations
 
-### API Keys (Optional)
-Create an `api_keys.txt` file with:
-```
-SECURITY_TRAILS_API_KEY=your_securitytrails_key
-BUILTWITH_API_KEY=your_builtwith_key
-```
-
-### Performance Tuning
-```python
-# Adjust in script for system optimization
-MAX_THREADS = min(psutil.cpu_count() * 4, 100)
-SOCKET_TIMEOUT = 2  # ARM-optimized
-BATCH_SIZE = 50     # Configurable batch size
-```
-
-## 🛡️ Safety & Ethics
-
-### Important Considerations
-- Use only on domains you own or have explicit permission
+### Important Guidelines
+- Use ONLY on domains you own or have explicit permission
 - Respect legal and ethical boundaries
+- Prioritize responsible disclosure
 - Do not use for malicious purposes
 
 ## 🤝 Contributing
 1. Fork the repository
-2. Create feature branch
-3. Commit changes
-4. Push to branch
-5. Create Pull Request
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
 
 ## 🐛 Troubleshooting
-- Ensure all dependencies are installed
-- Check API keys are correctly configured
-- Verify tool permissions
-- Report issues with system specifications
+- Verify all dependencies are installed
+- Confirm API keys are correctly configured
+- Check tool permissions
+- Report issues with detailed system specifications
 
 ## 📜 License
 [To be added - Currently no specific license]
 
 ## 🙏 Acknowledgments
-- Anubhav Mohandas - Original Author
-- Open-Source Community
-- ARM & x86 Development Communities
+- **Author**: Anubhav Mohandas
+- Open-Source Community Contributors
+- ARM & x86 Development Ecosystems
 
 ---
-Made with ❤️ for Reconnaissance
+💡 **Made with ❤️ for Cybersecurity Professionals**
