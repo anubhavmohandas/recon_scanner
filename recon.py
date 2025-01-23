@@ -559,3 +559,118 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}[*] Interrupted by user. Exiting...{Style.RESET_ALL}")
         exit(0)
+
+
+'''
+### 1. **IP Range Lookup:**
+   - **ipwhois**: A Python library that allows you to query Whois data to get information like IP ranges for a domain.
+     ```bash
+     pip install ipwhois
+     ```
+     Example usage:
+     ```python
+     from ipwhois import IPWhois
+
+     def get_ip_range(ip):
+         ipwhois = IPWhois(ip)
+         result = ipwhois.lookup_rdap()
+         print(result['network']['cidr'])  # This will give you the IP range (CIDR)
+     ```
+   - **ipinfo**: A service that provides IP details including ranges. You can use their API to get data.
+     ```bash
+     pip install ipinfo
+     ```
+     Example usage:
+     ```python
+     import ipinfo
+
+     def get_ip_info(ip):
+         handler = ipinfo.getHandler('your_api_key')
+         details = handler.getDetails(ip)
+         print(details.all)
+     ```
+
+### 2. **Gathering SSL/TLS Information:**
+   - **sslscan**: While `sslscan` itself is a command-line tool, you can invoke it from Python using the `subprocess` module.
+   - **pyopenssl**: This library can be used to programmatically access SSL/TLS information.
+     ```bash
+     pip install pyopenssl
+     ```
+     Example usage:
+     ```python
+     from OpenSSL import SSL
+     import socket
+
+     def get_ssl_details(domain):
+         context = SSL.Context(SSL.TLSv1_2_METHOD)
+         connection = SSL.Connection(context, socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+         connection.connect((domain, 443))
+         connection.do_handshake()
+         cert = connection.get_peer_certificate()
+         print(cert.get_subject())  # Certificate details
+     ```
+   - **sslyze**: Another Python tool that analyzes SSL/TLS configurations.
+     ```bash
+     pip install sslyze
+     ```
+     Example usage:
+     ```python
+     from sslyze import *
+
+     def ssl_scan(domain):
+         scanner = Scanner()
+         scanner.queue_domain(domain)
+         results = scanner.get_results()
+         print(results)
+     ```
+
+### 3. **File Hash Collection:**
+   - **hashlib**: Python's built-in library for generating MD5, SHA1, SHA256 hashes.
+     Example usage:
+     ```python
+     import hashlib
+
+     def get_file_hash(file_path, hash_type='sha256'):
+         hash_func = getattr(hashlib, hash_type)()
+         with open(file_path, 'rb') as f:
+             while chunk := f.read(8192):
+                 hash_func.update(chunk)
+         return hash_func.hexdigest()
+
+     print(get_file_hash('file.txt', 'sha256'))
+     ```
+   - **VirusTotal API**: You can use the VirusTotal API to check file hashes. You'll need to register for an API key.
+     ```bash
+     pip install requests
+     ```
+     Example usage:
+     ```python
+     import requests
+
+     def check_hash_in_virustotal(hash):
+         api_key = 'your_api_key'
+         url = f'https://www.virustotal.com/vtapi/v2/file/report'
+         params = {'apikey': api_key, 'resource': hash}
+         response = requests.get(url, params=params)
+         return response.json()
+
+     print(check_hash_in_virustotal('your_file_hash'))
+     ```
+
+### 4. **Harvester Tool (Email, Subdomain Enumeration, etc.):**
+   - **theHarvester**: A Python wrapper around the `theHarvester` tool can help you gather emails, subdomains, and other domain-related information.
+     Example usage:
+     ```bash
+     pip install theharvester
+     ```
+     Example usage:
+     ```python
+     from theHarvester import Harvester
+
+     def harvest_emails(domain):
+         harvester = Harvester()
+         results = harvester.run(domain)
+         for email in results.get('emails', []):
+             print(email)
+     ```
+'''
