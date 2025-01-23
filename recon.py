@@ -233,23 +233,6 @@ def resolve_dns(domain):
         print(f"[-] Could not resolve domain: {e}")
         return None
 
-def scan_ports(domain):
-    print(f"[+] Starting optimized port scan for {domain}...")
-    ip = resolve_dns(domain)
-    if not ip:
-        return
-    
-    scanner = PortScanner(ip)
-    results = scanner.scan()
-    
-    if results:
-        print("\n[+] Open Ports:")
-        for port, service, banner in sorted(results):
-            banner_info = f" - Banner: {banner}" if banner else ""
-            print(f"  - Port {port}: {service}{banner_info}")
-    else:
-        print("[-] No open ports found.")
-
 def fetch_http_headers(domain):
     try:
         url = f"http://{domain}"
@@ -262,36 +245,6 @@ def fetch_http_headers(domain):
             print(f"  {header}: {value}")
     except requests.RequestException as e:
         print(f"[-] Could not fetch HTTP headers: {e}")
-
-def perform_whois(domain):
-    try:
-        whois_info = whois.whois(domain)
-        print("[+] WHOIS Information:")
-        for key, value in whois_info.items():
-            if value:
-                if isinstance(value, (list, tuple)):
-                    print(f"  {key}:")
-                    for item in value:
-                        print(f"    - {item}")
-                else:
-                    print(f"  {key}: {value}")
-    except Exception as e:
-        print(f"[-] WHOIS lookup failed: {e}")
-
-def gather_dns_records(domain):
-    print(f"[+] Gathering DNS records for {domain}...")
-    enumerator = DNSEnumerator(domain)
-    records = enumerator.enumerate()
-    
-    if not records:
-        print("[-] No DNS records found.")
-        return
-        
-    for record_type, answers in records.items():
-        if answers:
-            print(f"\n  {record_type} Records:")
-            for answer in answers:
-                print(f"    - {answer}")
 
 def perform_subdomain_enum(domain, api_keys):
     print("\n[*] Choose subdomain enumeration method:")
@@ -335,50 +288,220 @@ def perform_subdomain_enum(domain, api_keys):
     
     return list(set(all_subdomains))
 
+def scan_ports(domain):
+    print(f"[+] Starting optimized port scan for {domain}...")
+    ip = resolve_dns(domain)
+    if not ip:
+        return None
+    
+    scanner = PortScanner(ip)
+    results = scanner.scan()
+    
+    if results:
+        print("\n[+] Open Ports:")
+        port_details = []
+        for port, service, banner in sorted(results):
+            banner_info = f" - Banner: {banner}" if banner else ""
+            print(f"  - Port {port}: {service}{banner_info}")
+            port_details.append({
+                'port': port, 
+                'service': service, 
+                'banner': banner
+            })
+        return port_details
+    else:
+        print("[-] No open ports found.")
+        return None
+
+def perform_whois(domain):
+    try:
+        whois_info = whois.whois(domain)
+        whois_dict = {}
+        print("[+] WHOIS Information:")
+        for key, value in whois_info.items():
+            if value:
+                if isinstance(value, (list, tuple)):
+                    print(f"  {key}:")
+                    whois_dict[key] = []
+                    for item in value:
+                        print(f"    - {item}")
+                        whois_dict[key].append(item)
+                else:
+                    print(f"  {key}: {value}")
+                    whois_dict[key] = value
+        return whois_dict
+    except Exception as e:
+        print(f"[-] WHOIS lookup failed: {e}")
+        return None
+
+def gather_dns_records(domain):
+    print(f"[+] Gathering DNS records for {domain}...")
+    enumerator = DNSEnumerator(domain)
+    records = enumerator.enumerate()
+    
+    if not records:
+        print("[-] No DNS records found.")
+        return None
+    
+    dns_records = {}
+    for record_type, answers in records.items():
+        if answers:
+            print(f"\n  {record_type} Records:")
+            dns_records[record_type] = []
+            for answer in answers:
+                print(f"    - {answer}")
+                dns_records[record_type].append(answer)
+    
+    return dns_records
+
 def detect_web_technologies(domain, api_keys):
-    builtwith_api_key = api_keys.get('BUILTWITH_API_KEY', '')
+    builtwith_api_key = api_keys.get('BUILTWITH_API_KEY', '').strip()
     if builtwith_api_key:
         try:
+            print(f"[*] Detecting web technologies for {domain} using BuiltWith API...")
             bt = BuiltWithTech(builtwith_api_key)
             technologies = bt.get_technologies(domain)
             if technologies:
                 print("[+] Web Technologies:")
+                tech_details = []
                 for tech in technologies:
-                    print(f"  - {tech}")
+                    # Extract and print technology details more comprehensively
+                    tech_name = tech.get('Name', 'Unknown')
+                    tech_category = tech.get('Category', 'Unknown')
+                    print(f"  - {tech_name} (Category: {tech_category})")
+                    tech_details.append({
+                        'name': tech_name,
+                        'category': tech_category
+                    })
+                return tech_details
             else:
-                print("[-] No technologies detected.")
+                print("[-] No technologies detected by BuiltWith API.")
+                return None
         except Exception as e:
             print(f"[-] Web technology detection failed: {e}")
+            return None
     else:
-        print("[-] No BuiltWith API key found. Skipping web technology detection.")
+        print("[-] No BuiltWith API key found in api_keys.txt. Please add BUILTWITH_API_KEY=your_api_key")
+        return None
+# Add a new function to save output
+def save_output(data, domain):
+    """
+    Prompt user to save output to a file
+    
+    Args:
+        data (dict): Dictionary containing scan results
+        domain (str): Target domain
+    """
+    save_choice = input("\n[?] Would you like to save the output? (y/n): ").lower()
+    if save_choice in ['y', 'yes']:
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename_base = f"{domain.replace('.', '_')}_{timestamp}"
+        
+        print("\n[*] Choose output format:")
+        print("1. JSON")
+        print("2. Text File")
+        print("3. Both")
+        
+        format_choice = input("Enter your choice: ")
+        
+        try:
+            # Create output directory if it doesn't exist
+            os.makedirs('recon_outputs', exist_ok=True)
+            
+            if format_choice in ['1', '3']:
+                json_path = os.path.join('recon_outputs', f"{filename_base}.json")
+                with open(json_path, 'w') as f:
+                    json.dump(data, f, indent=4)
+                print(f"[+] JSON output saved to {json_path}")
+            
+            if format_choice in ['2', '3']:
+                txt_path = os.path.join('recon_outputs', f"{filename_base}.txt")
+                with open(txt_path, 'w') as f:
+                    for key, value in data.items():
+                        f.write(f"{key}:\n")
+                        if isinstance(value, list):
+                            for item in value:
+                                f.write(f"  - {item}\n")
+                        else:
+                            f.write(f"  {value}\n")
+                print(f"[+] Text output saved to {txt_path}")
+        
+        except Exception as e:
+            print(f"[-] Error saving output: {e}")
+    else:
+        print("[*] Output not saved.")
 
 def automated_process(api_keys):
     target_url = input("Enter the target domain or URL: ")
     print("\n[INFO] Starting automated reconnaissance...")
+    results = {}
+    
     ip = resolve_dns(target_url)
     if ip:
-        scan_ports(target_url)
+        results['DNS_Resolution'] = ip
+        
+        port_results = scan_ports(target_url)
+        if port_results:
+            results['Open_Ports'] = port_results
+        
         fetch_http_headers(target_url)
-        perform_whois(target_url)
-        gather_dns_records(target_url)
-        detect_web_technologies(target_url, api_keys)
-        perform_subdomain_enum(target_url, api_keys)
+        
+        whois_info = perform_whois(target_url)
+        if whois_info:
+            results['WHOIS_Info'] = whois_info
+        
+        dns_records = gather_dns_records(target_url)
+        if dns_records:
+            results['DNS_Records'] = dns_records
+        
+        technologies = detect_web_technologies(target_url, api_keys)
+        if technologies:
+            results['Web_Technologies'] = technologies
+        
+        subdomains = perform_subdomain_enum(target_url, api_keys)
+        if subdomains:
+            results['Subdomains'] = subdomains
+        
+        # Save output option
+        save_output(results, target_url)
 
 def manual_process(api_keys):
     while True:
         print_manual_menu()
         choice = input("\nEnter your choice: ")
+        results = {}
 
         if choice == "1":  # Full Reconnaissance
             target_domain = input("Enter the target domain: ")
             ip = resolve_dns(target_domain)
             if ip:
-                scan_ports(target_domain)
+                results['DNS_Resolution'] = ip
+                
+                port_results = scan_ports(target_domain)
+                if port_results:
+                    results['Open_Ports'] = port_results
+                
                 fetch_http_headers(target_domain)
-                perform_whois(target_domain)
-                gather_dns_records(target_domain)
-                detect_web_technologies(target_domain, api_keys)
-                perform_subdomain_enum(target_domain, api_keys)
+                
+                whois_info = perform_whois(target_domain)
+                if whois_info:
+                    results['WHOIS_Info'] = whois_info
+                
+                dns_records = gather_dns_records(target_domain)
+                if dns_records:
+                    results['DNS_Records'] = dns_records
+                
+                technologies = detect_web_technologies(target_domain, api_keys)
+                if technologies:
+                    results['Web_Technologies'] = technologies
+                
+                subdomains = perform_subdomain_enum(target_domain, api_keys)
+                if subdomains:
+                    results['Subdomains'] = subdomains
+                
+                # Save output option
+                save_output(results, target_domain)
 
         elif choice == "2":  # DNS Enumeration Only
             target_domain = input("Enter the target domain: ")
