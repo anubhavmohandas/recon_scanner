@@ -24,8 +24,6 @@ import OpenSSL
 
 # Additional imports
 from ipwhois import IPWhois
-import wappalyzer
-from wappalyzer import Wappalyzer, WebPage
 
 init()
 
@@ -295,27 +293,7 @@ class VirusTotalScanner:
             print(f"[-] VirusTotal File Report Error: {e}")
             return None
 
-class WappalyzerTechDetector:
-    def __init__(self):
-        self.wappalyzer = Wappalyzer.latest()
 
-    def detect_technologies(self, url):
-        """
-        Detect web technologies using Wappalyzer
-        
-        Args:
-            url (str): Target URL
-        
-        Returns:
-            list: Detected technologies
-        """
-        try:
-            webpage = WebPage.new_from_url(url)
-            technologies = self.wappalyzer.analyze(webpage)
-            return list(technologies)
-        except Exception as e:
-            print(f"[-] Wappalyzer technology detection error: {e}")
-            return None
 
 class PortScanner:
     def __init__(self, target, start_port=1, end_port=1024):
@@ -521,19 +499,8 @@ def perform_subdomain_enum(domain, api_keys):
 def detect_web_technologies(domain, api_keys=None):
     try:
         url = f"http://{domain}"
-        wappalyzer_detector = WappalyzerTechDetector()
-        technologies = wappalyzer_detector.detect_technologies(url)
-        
-        if technologies:
-            print("[+] Web Technologies:")
-            tech_details = []
-            for tech in technologies:
-                print(f"  - {tech}")
-                tech_details.append(tech)
-            return tech_details
-        else:
-            print("[-] No technologies detected by Wappalyzer.")
-            return None
+        print("[-] Web technology detection is currently disabled.")
+        return None
     except Exception as e:
         print(f"[-] Web technology detection failed: {e}")
         return None
