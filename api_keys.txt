@@ -1,3 +1,2 @@
 SECURITY_TRAILS_API_KEY=
-BUILTWITH_API_KEY=
 VIRUSTOTAL_API_KEY=your_virustotal_api_key_here
