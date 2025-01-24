@@ -68,11 +68,11 @@ RECON Scanner is a powerful, optimized reconnaissance tool designed for comprehe
 
 ```bash
 # Clone the repository
-git clone https://github.com/anubhavmohandas/recon-scanner.git
-cd recon-scanner
+git clone https://github.com/anubhavmohandas/recon_scanner.git
+cd recon_scanner
 
 # Download installation script
-wget https://raw.githubusercontent.com/anubhavmohandas/recon-scanner/main/install_recon_tools.sh
+wget https://raw.githubusercontent.com/anubhavmohandas/recon_scanner/main/install_recon_tools.sh
 
 # Make script executable
 chmod +x install_recon_tools.sh
