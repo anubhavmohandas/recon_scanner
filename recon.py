@@ -21,9 +21,12 @@ import os
 import hashlib
 import ssl
 import OpenSSL
-
-# Additional imports
+import shutil
+import re
+import threading
 from ipwhois import IPWhois
+import traceback
+import time
 
 init()
 
@@ -486,6 +489,15 @@ class PortScanner:
             executor.map(lambda x: self._scan_port_batch(*x), port_ranges)
         return list(self.results.queue)
 
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, set):
+            return list(obj)
+        return super().default(obj)
+
+
 class DNSEnumerator:
     def __init__(self, domain):
         self.domain = domain
@@ -602,7 +614,17 @@ def fetch_http_headers(domain):
     except requests.RequestException as e:
         print(f"[-] Could not fetch HTTP headers: {e}")
 
-def perform_subdomain_enum(domain, api_keys):
+def perform_subdomain_enum(domain, api_keys, interactive=False):
+    if not interactive:  # Automated mode defaults to Assetfinder
+        assetfinder_results = run_assetfinder(domain)
+        if assetfinder_results:
+            print("\n[+] Assetfinder Results:")
+            for subdomain in assetfinder_results:
+                print(f"  - {subdomain}")
+        return list(set(assetfinder_results))
+
+    # Interactive mode (Manual) keeps existing prompt
+    
     print("\n[*] Choose subdomain enumeration method:")
     print("1. Amass")
     print("2. Assetfinder")
@@ -739,98 +761,160 @@ def gather_dns_records(domain):
 
 def save_output(data, domain):
     """
-    Prompt user to save output to a file
-    
-    Args:
-        data (dict): Dictionary containing scan results
-        domain (str): Target domain
+    Enhanced output saving with better error handling and formatting
     """
-    save_choice = input("\n[?] Would you like to save the output? (y/n): ").lower()
-    if save_choice in ['y', 'yes']:
-        # Generate filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename_base = f"{domain.replace('.', '_')}_{timestamp}"
-        
-        print("\n[*] Choose output format:")
-        print("1. JSON")
-        print("2. Text File")
-        print("3. Both")
-        
-        format_choice = input("Enter your choice: ")
-        
-        try:
-            # Create output directory if it doesn't exist
-            os.makedirs('recon_outputs', exist_ok=True)
-            
-            if format_choice in ['1', '3']:
-                json_path = os.path.join('recon_outputs', f"{filename_base}.json")
-                with open(json_path, 'w') as f:
-                    json.dump(data, f, indent=4)
-                print(f"[+] JSON output saved to {json_path}")
-            
-            if format_choice in ['2', '3']:
-                txt_path = os.path.join('recon_outputs', f"{filename_base}.txt")
-                with open(txt_path, 'w') as f:
-                    for key, value in data.items():
-                        f.write(f"{key}:\n")
-                        if isinstance(value, list):
-                            for item in value:
-                                f.write(f"  - {item}\n")
-                        elif isinstance(value, dict):
-                            for sub_key, sub_value in value.items():
-                                f.write(f"  {sub_key}: {sub_value}\n")
-                        else:
-                            f.write(f"  {value}\n")
-                        f.write("\n")
-                print(f"[+] Text output saved to {txt_path}")
-        except Exception as e:
-            print(f"[-] Error saving output: {e}")
-    else:
-        print("[*] Output not saved.")
+    def format_nested_dict(data, indent=0):
+        """Recursively format nested dictionaries and lists"""
+        formatted = []
+        if isinstance(data, dict):
+            for key, value in data.items():
+                formatted.append("  " * indent + f"{key}:")
+                if isinstance(value, (dict, list)):
+                    formatted.extend(format_nested_dict(value, indent + 1))
+                else:
+                    formatted.append("  " * (indent + 1) + str(value))
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, (dict, list)):
+                    formatted.extend(format_nested_dict(item, indent + 1))
+                else:
+                    formatted.append("  " * (indent + 1) + str(item))
+        return formatted
 
+    save_choice = input("\n[?] Would you like to save the output? (y/n): ").lower()
+    if save_choice not in ['y', 'yes']:
+        print("[*] Output not saved.")
+        return
+
+    try:
+        # Validate domain for filename
+        safe_domain = re.sub(r'[^a-zA-Z0-9]', '_', domain)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename_base = f"{safe_domain}_{timestamp}"
+        
+        # Ensure output directory exists
+        os.makedirs('recon_outputs', exist_ok=True)
+        
+        # Check disk space
+        total, used, free = shutil.disk_usage('.')
+        if free < 1024 * 1024 * 10:  # Less than 10MB free
+            print("[-] Insufficient disk space for saving output.")
+            return
+
+        output_formats = {
+            'JSON': f"{filename_base}.json",
+            'Text': f"{filename_base}.txt"
+        }
+
+        for fmt, filename in output_formats.items():
+            full_path = os.path.join('recon_outputs', filename)
+            try:
+                if fmt == 'JSON':
+                    with open(full_path, 'w') as f:
+                        json.dump(data, f, indent=4, cls=CustomJSONEncoder)
+                else:
+                    with open(full_path, 'w') as f:
+                        f.write('\n'.join(format_nested_dict(data)))
+                
+                print(f"[+] {fmt} output saved to {full_path}")
+            except PermissionError:
+                print(f"[-] Permission denied: Cannot write {full_path}")
+            except Exception as e:
+                print(f"[-] Error saving {fmt} output: {e}")
+
+    except Exception as e:
+        print(f"[-] Unexpected error in saving output: {e}")
+               
+def is_valid_domain(domain):
+    domain_regex = r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(domain_regex, domain) is not None
+
+def check_network_connectivity(host="8.8.8.8", port=53, timeout=3):
+    try:
+        socket.setdefaulttimeout(timeout)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
+        return True
+    except socket.error:
+        return False
+        
+def animated_processing(message):
+    """Display an animated processing indicator"""
+    import sys
+    import time
+    import threading
+    stop_event = threading.Event()
+    def spinner():
+        spinner_chars = "|/-\\"
+        while not stop_event.is_set():
+            for char in spinner_chars:
+                sys.stdout.write(f"\r{message} {char} ")
+                sys.stdout.flush()
+                time.sleep(0.2)
+                if stop_event.is_set():
+                    break
+    # Start spinner in a separate thread
+    spinner_thread = threading.Thread(target=spinner)
+    spinner_thread.start()
+    return stop_event, spinner_thread
+    
 def automated_process(api_keys):
     target_url = input("Enter the target domain or URL: ")
+
+    # Input validation
+    if not is_valid_domain(target_url):
+        print(f"{Fore.RED}[-] Invalid domain format{Style.RESET_ALL}")
+        return
+
+    # Network connectivity check
+    if not check_network_connectivity():
+        print(f"{Fore.RED}[-] No network connection{Style.RESET_ALL}")
+        return
+
     print("\n[INFO] Starting automated reconnaissance...")
     results = {}
-    
-    ip = resolve_dns(target_url)
-    if ip:
+
+    try:
+        ip = resolve_dns(target_url)
+        if not ip:
+            print(f"{Fore.YELLOW}[-] DNS resolution failed{Style.RESET_ALL}")
+            return
+
         results['DNS_Resolution'] = ip
         
-        ip_range_info = IPRangeResolver.get_ip_range(ip)
-        if ip_range_info:
-            results['IP_Range'] = ip_range_info
+        # Modular approach
+        modules = [
+            ('IP_Range', lambda: IPRangeResolver.get_ip_range(ip)),
+            ('SSL_Info', lambda: SSLInformation.get_ssl_details(target_url)),
+            ('Open_Ports', lambda: scan_ports(target_url)),
+            ('WHOIS_Info', lambda: perform_whois(target_url)),
+            ('DNS_Records', lambda: gather_dns_records(target_url)),
+            ('Web_Technologies', lambda: detect_web_technologies(target_url)),
+            ('Subdomains', lambda: perform_subdomain_enum(target_url, api_keys))
+        ]
         
-        ssl_info = SSLInformation.get_ssl_details(target_url)
-        if ssl_info:
-            results['SSL_Info'] = ssl_info
-        
-        port_results = scan_ports(target_url)
-        if port_results:
-            results['Open_Ports'] = port_results
-        
+        for module_name, module_func in modules:
+            try:
+                print(f"\n{Fore.CYAN}[*] Running {module_name} module...{Style.RESET_ALL}")
+                result = module_func()
+                if result:
+                    results[module_name] = result
+                else:
+                    print(f"{Fore.YELLOW}[-] {module_name} module returned no results{Style.RESET_ALL}")
+                time.sleep(0.5)  # Optional: brief pause between modules
+            except Exception as e:
+                print(f"{Fore.RED}[-] Error in {module_name} module: {e}{Style.RESET_ALL}")
+                print(f"{Fore.RED}{traceback.format_exc()}{Style.RESET_ALL}")
+                
+        # HTTP Headers (no result storage)
         fetch_http_headers(target_url)
-        
-        whois_info = perform_whois(target_url)
-        if whois_info:
-            results['WHOIS_Info'] = whois_info
-        
-        dns_records = gather_dns_records(target_url)
-        if dns_records:
-            results['DNS_Records'] = dns_records
-        
-        technologies = detect_web_technologies(target_url)
-        if technologies:
-            results['Web_Technologies'] = technologies
-        
-        subdomains = perform_subdomain_enum(target_url, api_keys)
-        if subdomains:
-            results['Subdomains'] = subdomains
-
         
         # Save output option
         save_output(results, target_url)
 
+    except Exception as e:
+        print(f"{Fore.RED}[-] Unexpected error during reconnaissance: {e}{Style.RESET_ALL}")
+        print(f"{Fore.RED}{traceback.format_exc()}{Style.RESET_ALL}")
+        
 def manual_process(api_keys):
     while True:
         print_manual_menu()
@@ -888,7 +972,8 @@ def manual_process(api_keys):
 
         elif choice == "4":  # Subdomain Enumeration Only
             target_domain = input("Enter the target domain: ")
-            perform_subdomain_enum(target_domain, api_keys)
+            perform_subdomain_enum(target_domain, api_keys, interactive=True)
+
 
         elif choice == "5":  # Web Technology Detection Only
             target_domain = input("Enter the target domain: ")
