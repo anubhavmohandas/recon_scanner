@@ -81,11 +81,23 @@ install_amass() {
 # Function to install Assetfinder
 install_assetfinder() {
    echo -e "${YELLOW}[*] Installing Assetfinder...${NC}"
-   go get -u github.com/tomnomnom/assetfinder
+   
+   # Check if assetfinder is available via apt-get
    if command -v assetfinder &> /dev/null; then
-      echo -e "${GREEN}[+] Assetfinder installed successfully!${NC}"
+      echo -e "${GREEN}[+] Assetfinder is already installed.${NC}"
    else
-      echo -e "${RED}[!] Assetfinder installation failed${NC}"
+      # Try installing via apt-get if available
+      if $PACKAGE_MANAGER install -y assetfinder &> /dev/null; then
+         echo -e "${GREEN}[+] Assetfinder installed successfully via apt-get!${NC}"
+      else
+         echo -e "${YELLOW}[*] Assetfinder not found in apt repository, installing via Go...${NC}"
+         go get -u github.com/tomnomnom/assetfinder
+         if command -v assetfinder &> /dev/null; then
+            echo -e "${GREEN}[+] Assetfinder installed successfully via Go!${NC}"
+         else
+            echo -e "${RED}[!] Assetfinder installation failed${NC}"
+         fi
+      fi
    fi
 }
 
