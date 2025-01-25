@@ -102,7 +102,7 @@ sudo yum install -y python3 python3-pip golang git wget
 go install -v github.com/OWASP/Amass/v3/...@master
 
 # Install Assetfinder
-go get -u github.com/tomnomnom/assetfinder
+apt-get install assetfinder
 ```
 
 #### Install Python Dependencies
