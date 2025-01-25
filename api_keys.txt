@@ -1,2 +1,5 @@
-SECURITY_TRAILS_API_KEY=
+# Add your API keys here
+# Format: SERVICE_NAME=your_api_key
+# Example:
+SECURITY_TRAILS_API_KEY=security_trails_key
 VIRUSTOTAL_API_KEY=your_virustotal_api_key_here
