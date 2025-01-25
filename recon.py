@@ -61,8 +61,9 @@ class SecurityTrails:
         self.base_url = "https://api.securitytrails.com/v1"
         self.headers = {
             "Accept": "application/json",
-            "APIKEY": api_key
+            "APIKEY": self.api_key
         }
+
 
     def get_subdomains(self, domain):
         endpoint = f"{self.base_url}/domain/{domain}/subdomains"
@@ -153,6 +154,153 @@ class FileHashCollector:
         except Exception as e:
             print(f"[-] File hash collection error: {e}")
             return None
+
+class UltimateTechDetector:
+    def __init__(self, url):
+        self.url = self._normalize_url(url)
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        }
+        self.tech_signatures = {
+            'Web Frameworks': {
+                'React': ['react.js', 'react-dom', '__react'],
+                'Angular': ['@angular', 'ng-app', 'angular.js'],
+                'Vue.js': ['vue.js', 'vuejs', '__vue__'],
+                'Svelte': ['svelte.js', 'svelte-hmr'],
+                'Next.js': ['_next/', 'nextjs'],
+                'Nuxt.js': ['nuxt', '_nuxt'],
+                'Laravel': ['laravel.js', '/laravel/'],
+                'Django': ['django.js', 'django-static'],
+                'Flask': ['flask.js'],
+                'Ruby on Rails': ['rails.js', '/assets/rails-']
+            },
+            'E-commerce Platforms': {
+                'Shopify': ['cdn.shopify.com', 'shopify.com'],
+                'Magento': ['magento.com', 'cdn.magento.com'],
+                'WooCommerce': ['woocommerce', 'wp-content/plugins/woocommerce'],
+                'BigCommerce': ['cdn.bigcommerce.com'],
+                'Prestashop': ['prestashop', 'prestashop.com'],
+                'OpenCart': ['opencart.com']
+            },
+            'Content Management Systems': {
+                'WordPress': ['wp-content', 'wp-includes', 'wordpress'],
+                'Drupal': ['drupal.org', 'sites/default', 'drupal.js'],
+                'Joomla': ['joomla', '/components/'],
+                'Ghost': ['ghost.js', 'ghost.css'],
+                'Contentful': ['contentful.com'],
+                'Strapi': ['strapi.js']
+            },
+            'Analytics & Marketing': {
+                'Google Analytics': ['google-analytics.com', 'UA-'],
+                'Google Tag Manager': ['googletagmanager.com'],
+                'Mixpanel': ['mixpanel.com'],
+                'Segment': ['segment.com'],
+                'Amplitude': ['amplitude.com'],
+                'HubSpot': ['hs-scripts.com'],
+                'Facebook Pixel': ['facebook-pixel']
+            },
+            'Web Servers': {
+                'Nginx': ['nginx'],
+                'Apache': ['apache'],
+                'LiteSpeed': ['litespeed'],
+                'Caddy': ['caddy'],
+                'IIS': ['iis.net']
+            },
+            'CDN & Performance': {
+                'Cloudflare': ['cloudflare.com', 'cdn.cloudflare.net'],
+                'Akamai': ['akamai.net'],
+                'Fastly': ['fastly.net'],
+                'Amazon CloudFront': ['cloudfront.net'],
+                'Cloudinary': ['cloudinary.com']
+            },
+            'Security & Protection': {
+                'Cloudflare': ['cloudflare.com'],
+                'Imperva': ['imperva.com'],
+                'Sucuri': ['sucuri.net']
+            },
+            'Payment Gateways': {
+                'Stripe': ['stripe.com'],
+                'PayPal': ['paypal.com'],
+                'Braintree': ['braintreegateway.com'],
+                'Square': ['squareup.com']
+            },
+            'Cloud Platforms': {
+                'AWS': ['aws.amazon.com'],
+                'Google Cloud': ['cloud.google.com'],
+                'Azure': ['azure.microsoft.com'],
+                'Heroku': ['heroku.com']
+            },
+            'Database Technologies': {
+                'MongoDB': ['mongodb.com'],
+                'Firebase': ['firebase.google.com'],
+                'Redis': ['redis.io']
+            },
+            'JavaScript Libraries': {
+                'jQuery': ['jquery.js', 'jquery.min.js'],
+                'Lodash': ['lodash.js'],
+                'Moment.js': ['moment.js'],
+                'Chart.js': ['chart.js']
+            },
+            'API & Backend': {
+                'GraphQL': ['graphql', 'apollo-client'],
+                'gRPC': ['grpc.io'],
+                'Swagger': ['swagger.io']
+            },
+            'Protocols & Network': {
+                'HTTP/3': ['h3', 'quic'],
+                'HTTP/2': ['http/2', 'h2']
+            }
+        }
+
+    def _normalize_url(self, url):
+        if not url.startswith(('http://', 'https://')):
+            return f'https://{url}'
+        return url
+
+    def detect_technologies(self):
+        try:
+            response = requests.get(self.url, headers=self.headers, timeout=10)
+            
+            detected_tech = {}
+            
+            # Basic header information
+            detected_tech['Basic Headers'] = {
+                'Server': response.headers.get('Server', 'Not detected'),
+                'X-Powered-By': response.headers.get('X-Powered-By', 'Not detected')
+            }
+            
+            # Analyze response details
+            detected_tech['Response Details'] = {
+                'Status Code': response.status_code,
+                'Protocol Version': f'HTTP/{response.raw.version/10:.1f}'
+            }
+            
+            # HTML and header content detection
+            html_content = response.text.lower()
+            headers_content = str(response.headers).lower()
+            
+            # Detect technologies across categories
+            for category, technologies in self.tech_signatures.items():
+                category_techs = []
+                for tech, signatures in technologies.items():
+                    if any(
+                        sig.lower() in html_content or 
+                        sig.lower() in headers_content
+                        for sig in signatures
+                    ):
+                        category_techs.append(tech)
+                
+                if category_techs:
+                    detected_tech[category] = category_techs
+            
+            return {
+                'url': self.url,
+                'technologies': detected_tech
+            }
+        
+        except requests.RequestException as e:
+            return {'error': str(e)}
 
 class VirusTotalScanner:
     def __init__(self, api_key):
@@ -294,7 +442,6 @@ class VirusTotalScanner:
             return None
 
 
-
 class PortScanner:
     def __init__(self, target, start_port=1, end_port=1024):
         self.target = target
@@ -377,12 +524,13 @@ def run_assetfinder(domain):
     try:
         print("[*] Running Assetfinder...")
         result = subprocess.run(["assetfinder", "--subs-only", domain], 
-                              capture_output=True, text=True)
+                                capture_output=True, text=True)
         subdomains = result.stdout.strip().split('\n')
         return [sub for sub in subdomains if sub]
     except Exception as e:
         print(f"[-] Assetfinder error: {e}")
         return []
+
 
 def print_banner():
     banner = f"""
@@ -496,11 +644,29 @@ def perform_subdomain_enum(domain, api_keys):
     
     return list(set(all_subdomains))
 
-def detect_web_technologies(domain, api_keys=None):
+def detect_web_technologies(domain):
     try:
-        url = f"http://{domain}"
-        print("[-] Web technology detection is currently disabled.")
-        return None
+        print(f"[*] Detecting web technologies for {domain}...")
+        
+        # Create an instance of UltimateTechDetector
+        tech_detector = UltimateTechDetector(domain)
+        
+        # Run the detection
+        result = tech_detector.detect_technologies()
+        
+        if 'error' in result:
+            print(f"[-] Error detecting technologies: {result['error']}")
+            return None
+        
+        # Display detected technologies
+        print("[+] Detected Web Technologies:")
+        for category, technologies in result['technologies'].items():
+            print(f"  {category}:")
+            for tech in technologies:
+                print(f"    - {tech}")
+        
+        return result['technologies']  
+        
     except Exception as e:
         print(f"[-] Web technology detection failed: {e}")
         return None
@@ -631,12 +797,10 @@ def automated_process(api_keys):
     if ip:
         results['DNS_Resolution'] = ip
         
-        # New: IP Range Lookup
         ip_range_info = IPRangeResolver.get_ip_range(ip)
         if ip_range_info:
             results['IP_Range'] = ip_range_info
         
-        # New: SSL Information
         ssl_info = SSLInformation.get_ssl_details(target_url)
         if ssl_info:
             results['SSL_Info'] = ssl_info
@@ -662,6 +826,7 @@ def automated_process(api_keys):
         subdomains = perform_subdomain_enum(target_url, api_keys)
         if subdomains:
             results['Subdomains'] = subdomains
+
         
         # Save output option
         save_output(results, target_url)
