@@ -42,6 +42,9 @@ RECON Scanner is a powerful, optimized reconnaissance tool designed for comprehe
 - HTTP Header Extraction
 - VirusTotal URL and File Scanning
 
+### 🌐 **Website URL Formatting**
+- When inputting website domains, avoid using full URLs like `https://www.example.com`. Instead, simply provide the domain in its root form, e.g., `example.com`, to streamline the scanning process.
+
 ### 🎨 User Experience
 - Colorful, interactive CLI
 - Flexible output formats (JSON, Text)
@@ -55,7 +58,6 @@ RECON Scanner is a powerful, optimized reconnaissance tool designed for comprehe
   - Kali Linux
   - Ubuntu
   - Debian
-  - CentOS
 - Architectures:
   - ARM
   - x86
@@ -181,3 +183,5 @@ python3 recon.py
 
 ---
 💡 **Made with ❤️ for Cybersecurity Professionals**
+
+---
