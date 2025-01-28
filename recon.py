@@ -4,7 +4,7 @@ import socket
 import whois
 import requests
 import dns.resolver
-import dns.rdatatype
+# import dns.rdatatype
 from bs4 import BeautifulSoup
 from datetime import datetime
 from colorama import Fore, Style, init
@@ -27,6 +27,11 @@ import threading
 from ipwhois import IPWhois
 import traceback
 import time
+from typing import Callable, Any, Dict, Union, List
+import traceback
+from threading import Thread
+import itertools
+import sys
 
 init()
 
@@ -109,31 +114,51 @@ class SSLInformation:
     @staticmethod
     def get_ssl_details(domain, port=443):
         """
-        Get SSL/TLS certificate details
+        Get enhanced SSL/TLS certificate details using both ssl and OpenSSL
         
         Args:
             domain (str): Target domain
             port (int): SSL port (default 443)
         
         Returns:
-            dict: SSL certificate details
+            dict: Detailed SSL certificate information
         """
         try:
             context = ssl.create_default_context()
             with socket.create_connection((domain, port)) as sock:
                 with context.wrap_socket(sock, server_hostname=domain) as secure_sock:
-                    cert = secure_sock.getpeercert(binary_form=False)
+                    cert = secure_sock.getpeercert(binary_form=True)
+                    x509 = OpenSSL.crypto.load_certificate(
+                        OpenSSL.crypto.FILETYPE_ASN1,
+                        cert
+                    )
                     
-                    return {
-                        'issuer': dict(x[0] for x in cert['issuer']),
-                        'subject': dict(x[0] for x in cert['subject']),
-                        'version': cert.get('version', 'N/A'),
-                        'notBefore': cert.get('notBefore', 'N/A'),
-                        'notAfter': cert.get('notAfter', 'N/A')
+                    cert_info = {
+                        'subject': dict(x[0] for x in secure_sock.getpeercert()['subject']),
+                        'issuer': dict(x[0] for x in secure_sock.getpeercert()['issuer']),
+                        'version': x509.get_version(),
+                        'serial_number': hex(x509.get_serial_number()),
+                        'not_before': x509.get_notBefore().decode(),
+                        'not_after': x509.get_notAfter().decode(),
+                        'signature_algorithm': x509.get_signature_algorithm().decode(),
+                        'public_key': {
+                            'type': x509.get_pubkey().type(),
+                            'bits': x509.get_pubkey().bits(),
+                        },
+                        'extensions': [
+                            {
+                                'name': ext.get_short_name().decode(),
+                                'value': ext.__str__()
+                            }
+                            for ext in [x509.get_extension(i) for i in range(x509.get_extension_count())]
+                        ]
                     }
+                    
+                    return cert_info
         except Exception as e:
             print(f"[-] SSL details retrieval error: {e}")
             return None
+            
 
 class FileHashCollector:
     @staticmethod
@@ -309,158 +334,90 @@ class VirusTotalScanner:
     def __init__(self, api_key):
         self.api_key = api_key
         self.base_url = 'https://www.virustotal.com/vtapi/v2/'
-        self.headers = {
-            'apikey': api_key
-        }
-
-    def scan_url(self, url):
+        
+    def _handle_vt_response(self, response, operation_type):
         """
-        Scan a URL using VirusTotal
+        Centralized response handler for VirusTotal API calls
         
         Args:
-            url (str): URL to scan
+            response (requests.Response): Response from VT API
+            operation_type (str): Type of operation being performed
         
         Returns:
-            dict: Scan results
+            dict: Processed response data or None on error
         """
         try:
-            params = {'url': url}
-            response = requests.post(f'{self.base_url}url/scan', headers=self.headers, params=params)
-            
             if response.status_code == 200:
-                scan_result = response.json()
-                print(f"[+] VirusTotal URL Scan Initiated: {scan_result.get('scan_id', 'N/A')}")
-                return scan_result
+                data = response.json()
+                if data.get('response_code') == 1:
+                    return data
+                print(f"[-] VirusTotal: No {operation_type} data found")
+                return None
+            elif response.status_code == 204:
+                print("[-] VirusTotal: API rate limit exceeded")
+                return None
+            elif response.status_code == 403:
+                print("[-] VirusTotal: Invalid API key")
+                return None
             else:
-                print(f"[-] VirusTotal URL Scan Failed: {response.status_code}")
+                print(f"[-] VirusTotal {operation_type} failed: HTTP {response.status_code}")
                 return None
         except Exception as e:
-            print(f"[-] VirusTotal URL Scan Error: {e}")
+            print(f"[-] VirusTotal {operation_type} error: {e}")
             return None
 
-    def get_url_report(self, url):
+    def process_url(self, url, operation):
         """
-        Get URL scan report
-        
-        Args:
-            url (str): URL to check
-        
-        Returns:
-            dict: Detailed scan report
+        Process URL-based operations (scan or report)
         """
         try:
             params = {'apikey': self.api_key, 'resource': url}
-            response = requests.get(f'{self.base_url}url/report', params=params)
-            
-            if response.status_code == 200:
-                report = response.json()
-                if report.get('response_code') == 1:
-                    positives = report.get('positives', 0)
-                    total = report.get('total', 0)
-                    
-                    print(f"[+] VirusTotal URL Report:")
-                    print(f"    Detected Malicious: {positives}/{total}")
-                    
-                    if positives > 0:
-                        print("    Suspicious Engines:")
-                        for engine, result in report.get('scans', {}).items():
-                            if result.get('detected', False):
-                                print(f"    - {engine}: {result.get('result', 'Malicious')}")
-                    
-                    return report
-                else:
-                    print("[-] VirusTotal: URL not found in database")
-                    return None
-            else:
-                print(f"[-] VirusTotal URL Report Failed: {response.status_code}")
-                return None
+            response = requests.get(f'{self.base_url}url/{operation}', params=params)
+            return self._handle_vt_response(response, operation)
         except Exception as e:
-            print(f"[-] VirusTotal URL Report Error: {e}")
+            print(f"[-] VirusTotal URL {operation} error: {e}")
             return None
 
-    def scan_file(self, file_path):
+    def process_file(self, file_path, operation):
         """
-        Scan a file using VirusTotal
-        
-        Args:
-            file_path (str): Path to file to scan
-        
-        Returns:
-            dict: Scan results
+        Process file-based operations (scan or report)
         """
         try:
-            with open(file_path, 'rb') as f:
-                files = {'file': f}
-                response = requests.post(f'{self.base_url}file/scan', headers={'apikey': self.api_key}, files=files)
-            
-            if response.status_code == 200:
-                scan_result = response.json()
-                print(f"[+] VirusTotal File Scan Initiated: {scan_result.get('resource', 'N/A')}")
-                return scan_result
-            else:
-                print(f"[-] VirusTotal File Scan Failed: {response.status_code}")
-                return None
-        except Exception as e:
-            print(f"[-] VirusTotal File Scan Error: {e}")
-            return None
-
-    def get_file_report(self, file_hash):
-        """
-        Get file scan report by hash
-        
-        Args:
-            file_hash (str): MD5, SHA-1, or SHA-256 hash of the file
-        
-        Returns:
-            dict: Detailed file scan report
-        """
-        try:
-            params = {'apikey': self.api_key, 'resource': file_hash}
-            response = requests.get(f'{self.base_url}file/report', params=params)
-            
-            if response.status_code == 200:
-                report = response.json()
-                if report.get('response_code') == 1:
-                    positives = report.get('positives', 0)
-                    total = report.get('total', 0)
-                    
-                    print(f"[+] VirusTotal File Report:")
-                    print(f"    Detected Malicious: {positives}/{total}")
-                    
-                    if positives > 0:
-                        print("    Suspicious Engines:")
-                        for engine, result in report.get('scans', {}).items():
-                            if result.get('detected', False):
-                                print(f"    - {engine}: {result.get('result', 'Malicious')}")
-                    
-                    return report
-                else:
-                    print("[-] VirusTotal: File not found in database")
+            if operation == 'scan':
+                with open(file_path, 'rb') as f:
+                    response = requests.post(
+                        f'{self.base_url}file/scan',
+                        files={'file': f},
+                        params={'apikey': self.api_key}
+                    )
+            else:  # report
+                file_hash = FileHashCollector.collect_file_hash(file_path)
+                if not file_hash:
                     return None
-            else:
-                print(f"[-] VirusTotal File Report Failed: {response.status_code}")
-                return None
+                params = {'apikey': self.api_key, 'resource': file_hash}
+                response = requests.get(f'{self.base_url}file/report', params=params)
+            
+            return self._handle_vt_response(response, f"file {operation}")
         except Exception as e:
-            print(f"[-] VirusTotal File Report Error: {e}")
+            print(f"[-] VirusTotal file {operation} error: {e}")
             return None
-
-
+            
 class PortScanner:
     def __init__(self, target, start_port=1, end_port=1024):
         self.target = target
         self.start_port = start_port
         self.end_port = end_port
         self.results = queue.Queue()
-        self.service_map = defaultdict(str)
-        self._load_service_map()
-
-    def _load_service_map(self):
-        for port in range(1, 1024):
+        self._service_cache = {}
+    
+    def _get_service_name(self, port):
+        """Get service name on-demand and cache it"""
+        if port not in self._service_cache:
             try:
-                service = socket.getservbyport(port)
-                self.service_map[port] = service
+                self._service_cache[port] = socket.getservbyport(port)
             except:
-                continue
+                self._service_cache[port] = "unknown"
+        return self._service_cache[port]
 
     def _scan_port_batch(self, start, end):
         for port in range(start, min(end, self.end_port + 1)):
@@ -468,7 +425,7 @@ class PortScanner:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.settimeout(SOCKET_TIMEOUT)
                     if s.connect_ex((self.target, port)) == 0:
-                        service = self.service_map.get(port, "unknown")
+                        service = self._get_service_name(port)
                         banner = self._grab_banner(self.target, port)
                         self.results.put((port, service, banner))
             except:
@@ -589,17 +546,119 @@ def print_manual_menu():
 {Style.RESET_ALL}"""
     print(menu)
 
+import socket
+
 def resolve_dns(domain):
+    """
+    Enhanced DNS resolution with multiple record types and fallback
+    
+    Args:
+        domain (str): Domain to resolve
+        
+    Returns:
+        dict: Dictionary containing IP addresses and other DNS info
+    """
+    resolver = dns.resolver.Resolver()
+    resolver.timeout = DNS_TIMEOUT
+    resolver.lifetime = DNS_TIMEOUT
+    resolver.rotate = True  # Use round-robin between nameservers
+    
+    results = {
+        'ipv4': [],
+        'ipv6': []
+    }
+    
     try:
-        resolver = dns.resolver.Resolver()
-        resolver.timeout = DNS_TIMEOUT
-        resolver.lifetime = DNS_TIMEOUT
-        ip_address = socket.gethostbyname(domain)
-        print(f"[+] Resolved IP: {ip_address}")
-        return ip_address
-    except Exception as e:
-        print(f"[-] Could not resolve domain: {e}")
+        # Try A records (IPv4)
+        answers = resolver.resolve(domain, 'A')
+        results['ipv4'] = [str(rdata) for rdata in answers]
+    except dns.resolver.NoAnswer:
+        pass
+    except dns.resolver.NXDOMAIN:
+        print(f"[-] Domain {domain} does not exist")
         return None
+    except Exception as e:
+        print(f"[-] IPv4 resolution error: {e}")
+    
+    try:
+        # Try AAAA records (IPv6)
+        answers = resolver.resolve(domain, 'AAAA')
+        results['ipv6'] = [str(rdata) for rdata in answers]
+    except (dns.resolver.NoAnswer, Exception):
+        pass
+    
+    # Return None if no IPs found
+    if not results['ipv4'] and not results['ipv6']:
+        print(f"[-] Could not resolve any IP addresses for {domain}")
+        return None
+        
+    return results
+'''    
+def scan_ports(domain):
+    """Optimized port scanning using socket."""
+    print(f"[+] Starting optimized port scan for {domain}...")
+    
+    # Resolve DNS to get IP
+    ip = resolve_dns(domain)
+    if not ip:
+        return None
+    
+    # List of common ports to scan (you can customize this)
+    common_ports = [20, 21, 22, 23, 25, 53, 80, 110, 443, 3306, 8080]
+    
+    # Dictionary to hold port status and service
+    port_details = []
+
+    # Iterate over ports and check if they're open
+    for port in common_ports:
+        # Try connecting to the port
+        try:
+            # Timeout after 1 second
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1)
+                result = s.connect_ex((ip, port))  # 0 = success, non-zero = error
+                if result == 0:  # If the port is open
+                    service = "Unknown Service"  # Placeholder, you could use a service map here
+                    print(f"  - Port {port} is OPEN")
+                    port_details.append({'port': port, 'service': service})
+                else:
+                    pass  # No need to report closed ports
+        except socket.error as err:
+            print(f"[-] Error scanning port {port}: {err}")
+            continue
+
+    return port_details if port_details else None
+'''
+
+def scan_ports(domain):
+    print(f"[+] Starting optimized port scan for {domain}...")
+    ip = resolve_dns(domain)
+    if not ip:
+        return None
+    
+    scanner = PortScanner(ip)
+    results = []
+    
+    def scan_with_progress():
+        for port, service, banner in scanner.scan():
+            banner_info = f" - Banner: {banner}" if banner else ""
+            print(f"  [+] Found open port {port}: {service}{banner_info}")
+            results.append({
+                'port': port, 
+                'service': service, 
+                'banner': banner
+            })
+        return results
+    
+    scanned_ports = animated_processing("Scanning ports", scan_with_progress)
+    
+    if scanned_ports:
+        print("\n[+] Port scan complete. Found", len(scanned_ports), "open ports")
+        return scanned_ports
+    else:
+        print("[-] No open ports found.")
+        return None
+
 
 def fetch_http_headers(domain):
     try:
@@ -693,30 +752,6 @@ def detect_web_technologies(domain):
         print(f"[-] Web technology detection failed: {e}")
         return None
 
-def scan_ports(domain):
-    print(f"[+] Starting optimized port scan for {domain}...")
-    ip = resolve_dns(domain)
-    if not ip:
-        return None
-    
-    scanner = PortScanner(ip)
-    results = scanner.scan()
-    
-    if results:
-        print("\n[+] Open Ports:")
-        port_details = []
-        for port, service, banner in sorted(results):
-            banner_info = f" - Banner: {banner}" if banner else ""
-            print(f"  - Port {port}: {service}{banner_info}")
-            port_details.append({
-                'port': port, 
-                'service': service, 
-                'banner': banner
-            })
-        return port_details
-    else:
-        print("[-] No open ports found.")
-        return None
 
 def perform_whois(domain):
     try:
@@ -837,51 +872,101 @@ def check_network_connectivity(host="8.8.8.8", port=53, timeout=3):
     except socket.error:
         return False
         
-def animated_processing(message):
-    """Display an animated processing indicator"""
-    import sys
-    import time
-    import threading
-    stop_event = threading.Event()
-    def spinner():
-        spinner_chars = "|/-\\"
-        while not stop_event.is_set():
-            for char in spinner_chars:
-                sys.stdout.write(f"\r{message} {char} ")
-                sys.stdout.flush()
-                time.sleep(0.2)
-                if stop_event.is_set():
-                    break
-    # Start spinner in a separate thread
-    spinner_thread = threading.Thread(target=spinner)
-    spinner_thread.start()
-    return stop_event, spinner_thread
+from typing import Callable, Any, Dict, Union, List
+import time
+from colorama import Fore, Style
+import traceback
+from threading import Thread
+import itertools
+import sys
+
+def animated_processing(message: str, func: Callable) -> Any:
+    """
+    Display an animated loading indicator while executing a function.
     
-def automated_process(api_keys):
-    target_url = input("Enter the target domain or URL: ")
+    Args:
+        message: Message to display during processing
+        func: Function to execute
+    
+    Returns:
+        The result of the executed function
+    """
+    result = None
+    error = None
+    is_done = False
+
+    def animate():
+        for char in itertools.cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']):
+            if is_done:
+                break
+            sys.stdout.write(f'\r{message} {char}')
+            sys.stdout.flush()
+            time.sleep(0.1)
+        sys.stdout.write('\r')
+        sys.stdout.flush()
+
+    def execute():
+        nonlocal result, error, is_done
+        try:
+            result = func()
+        except Exception as e:
+            error = e
+        finally:
+            is_done = True
+
+    # Start animation in separate thread
+    animation = Thread(target=animate)
+    animation.daemon = True
+    animation.start()
+
+    # Execute function in main thread
+    execute_thread = Thread(target=execute)
+    execute_thread.start()
+    execute_thread.join()
+
+    if error:
+        raise error
+    return result
+
+def automated_process(api_keys: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Perform automated reconnaissance on a target domain.
+    
+    Args:
+        api_keys: Dictionary containing API keys for various services
+    
+    Returns:
+        Dictionary containing reconnaissance results
+    """
+    target_url = input("Enter the target domain or URL: ").strip()
+    results: Dict[str, Union[str, List, Dict]] = {}
 
     # Input validation
     if not is_valid_domain(target_url):
         print(f"{Fore.RED}[-] Invalid domain format{Style.RESET_ALL}")
-        return
+        return results
 
     # Network connectivity check
     if not check_network_connectivity():
         print(f"{Fore.RED}[-] No network connection{Style.RESET_ALL}")
-        return
+        return results
 
-    print("\n[INFO] Starting automated reconnaissance...")
-    results = {}
+    print(f"\n{Fore.CYAN}[INFO] Starting automated reconnaissance...{Style.RESET_ALL}")
 
     try:
-        ip = resolve_dns(target_url)
+        # DNS Resolution
+        ip = animated_processing(
+            "Resolving DNS",
+            lambda: resolve_dns(target_url)
+        )
+        
         if not ip:
             print(f"{Fore.YELLOW}[-] DNS resolution failed{Style.RESET_ALL}")
-            return
-
-        results['DNS_Resolution'] = ip
+            return results
         
-        # Modular approach
+        results['DNS_Resolution'] = ip
+
+        # Define reconnaissance modules
         modules = [
             ('IP_Range', lambda: IPRangeResolver.get_ip_range(ip)),
             ('SSL_Info', lambda: SSLInformation.get_ssl_details(target_url)),
@@ -891,22 +976,40 @@ def automated_process(api_keys):
             ('Web_Technologies', lambda: detect_web_technologies(target_url)),
             ('Subdomains', lambda: perform_subdomain_enum(target_url, api_keys))
         ]
-        
+
+        # Execute modules
         for module_name, module_func in modules:
             try:
                 print(f"\n{Fore.CYAN}[*] Running {module_name} module...{Style.RESET_ALL}")
-                result = module_func()
+                
+                result = animated_processing(
+                    f"Processing {module_name}",
+                    module_func
+                )
+
                 if result:
                     results[module_name] = result
+                    print(f"\n{Fore.GREEN}[+] {module_name} Results:{Style.RESET_ALL}")
+                    
+                    if isinstance(result, dict):
+                        for key, value in result.items():
+                            print(f"  {key}: {value}")
+                    elif isinstance(result, list):
+                        for item in result:
+                            print(f"  - {item}")
+                    else:
+                        print(f"  {result}")
                 else:
                     print(f"{Fore.YELLOW}[-] {module_name} module returned no results{Style.RESET_ALL}")
-                time.sleep(0.5)  # Optional: brief pause between modules
+
             except Exception as e:
-                print(f"{Fore.RED}[-] Error in {module_name} module: {e}{Style.RESET_ALL}")
+                print(f"{Fore.RED}[-] Error in {module_name} module: {str(e)}{Style.RESET_ALL}")
                 print(f"{Fore.RED}{traceback.format_exc()}{Style.RESET_ALL}")
-                
+
+    #return results                  
+                 
         # HTTP Headers (no result storage)
-        fetch_http_headers(target_url)
+        #fetch_http_headers(target_url)
         
         # Save output option
         save_output(results, target_url)
@@ -1050,11 +1153,14 @@ def main():
             manual_process(api_keys)
         
         elif choice == "3":  # Exit
+            os.system('clear')  # Clear the terminal screen
             print(f"{Fore.GREEN}[*] Exiting Recon Tool. Goodbye!{Style.RESET_ALL}")
             break
         
         else:
             print(f"{Fore.RED}[-] Invalid choice. Please try again.{Style.RESET_ALL}")
+
+
 
 if __name__ == "__main__":
     try:
