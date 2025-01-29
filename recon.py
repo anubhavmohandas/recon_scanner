@@ -545,7 +545,9 @@ def print_manual_menu():
 {Fore.CYAN}[12]{Fore.RESET} Back to Main Menu
 {Style.RESET_ALL}"""
     print(menu)
-    
+
+import socket
+
 def resolve_dns(domain):
     """
     Enhanced DNS resolution with multiple record types and fallback
@@ -794,7 +796,7 @@ def gather_dns_records(domain):
 
 def save_output(data, domain):
     """
-    Enhanced output saving with better error handling and formatting
+    Enhanced output saving with better error handling, formatting, and summary
     """
     def format_nested_dict(data, indent=0):
         """Recursively format nested dictionaries and lists"""
@@ -814,9 +816,11 @@ def save_output(data, domain):
                     formatted.append("  " * (indent + 1) + str(item))
         return formatted
 
-    save_choice = input("\n[?] Would you like to save the output? (y/n): ").lower()
+    # Add proper spacing before the prompt
+    print() 
+    save_choice = input(f"{Fore.YELLOW}[?]{Fore.RESET} Would you like to save the output? (y/n): ").lower()
     if save_choice not in ['y', 'yes']:
-        print("[*] Output not saved.")
+        print(f"\n{Fore.CYAN}[*]{Fore.RESET} Output not saved.")
         return
 
     try:
@@ -831,12 +835,14 @@ def save_output(data, domain):
         # Check disk space
         total, used, free = shutil.disk_usage('.')
         if free < 1024 * 1024 * 10:  # Less than 10MB free
-            print("[-] Insufficient disk space for saving output.")
+            print(f"\n{Fore.RED}[-]{Fore.RESET} Insufficient disk space for saving output.")
             return
 
+        # Define output formats and their corresponding files
         output_formats = {
             'JSON': f"{filename_base}.json",
-            'Text': f"{filename_base}.txt"
+            'Text': f"{filename_base}.txt",
+            'Summary': f"{filename_base}_summary.txt"
         }
 
         for fmt, filename in output_formats.items():
@@ -845,18 +851,45 @@ def save_output(data, domain):
                 if fmt == 'JSON':
                     with open(full_path, 'w') as f:
                         json.dump(data, f, indent=4, cls=CustomJSONEncoder)
-                else:
+                
+                elif fmt == 'Summary':
+                    with open(full_path, 'w') as f:
+                        f.write(f"RECON Scanner Results for {domain}\n")
+                        f.write(f"Scan Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                        f.write("="*50 + "\n\n")
+                        
+                        # Write formatted results for each module
+                        for module, results in data.items():
+                            f.write(format_scan_results(results, module))
+                            f.write("\n" + "-"*50 + "\n")
+                        
+                        # Add final summary at the end
+                        f.write("\n\nScan Summary\n")
+                        f.write("="*50 + "\n")
+                        if data.get('DNS_Records'):
+                            f.write(f"• Found {len(data['DNS_Records'].get('A', []))} A records\n")
+                            f.write(f"• Found {len(data['DNS_Records'].get('MX', []))} MX records\n")
+                        
+                        if data.get('Subdomains'):
+                            f.write(f"• Discovered {len(data['Subdomains'])} subdomains\n")
+                        
+                        if data.get('Web_Technologies'):
+                            tech_count = sum(len(v) for v in data['Web_Technologies'].values() if isinstance(v, list))
+                            f.write(f"• Identified {tech_count} web technologies\n")
+                
+                else:  # Regular text format
                     with open(full_path, 'w') as f:
                         f.write('\n'.join(format_nested_dict(data)))
                 
-                print(f"[+] {fmt} output saved to {full_path}")
+                print(f"\n{Fore.GREEN}[+]{Fore.RESET} {fmt} output saved to {full_path}")
+            
             except PermissionError:
-                print(f"[-] Permission denied: Cannot write {full_path}")
+                print(f"\n{Fore.RED}[-]{Fore.RESET} Permission denied: Cannot write {full_path}")
             except Exception as e:
-                print(f"[-] Error saving {fmt} output: {e}")
+                print(f"\n{Fore.RED}[-]{Fore.RESET} Error saving {fmt} output: {e}")
 
     except Exception as e:
-        print(f"[-] Unexpected error in saving output: {e}")
+        print(f"\n{Fore.RED}[-]{Fore.RESET} Unexpected error in saving output: {e}")
                
 def is_valid_domain(domain):
     domain_regex = r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
@@ -927,24 +960,14 @@ def animated_processing(message: str, func: Callable) -> Any:
     return result
 
 def automated_process(api_keys: Dict[str, str]) -> Dict[str, Any]:
-    """
-    Perform automated reconnaissance on a target domain.
-    
-    Args:
-        api_keys: Dictionary containing API keys for various services
-    
-    Returns:
-        Dictionary containing reconnaissance results
-    """
+    """Perform automated reconnaissance with enhanced output formatting"""
     target_url = input("Enter the target domain or URL: ").strip()
     results: Dict[str, Union[str, List, Dict]] = {}
 
-    # Input validation
     if not is_valid_domain(target_url):
         print(f"{Fore.RED}[-] Invalid domain format{Style.RESET_ALL}")
         return results
 
-    # Network connectivity check
     if not check_network_connectivity():
         print(f"{Fore.RED}[-] No network connection{Style.RESET_ALL}")
         return results
@@ -975,7 +998,7 @@ def automated_process(api_keys: Dict[str, str]) -> Dict[str, Any]:
             ('Subdomains', lambda: perform_subdomain_enum(target_url, api_keys))
         ]
 
-        # Execute modules
+        # Execute modules with formatted output
         for module_name, module_func in modules:
             try:
                 print(f"\n{Fore.CYAN}[*] Running {module_name} module...{Style.RESET_ALL}")
@@ -987,16 +1010,7 @@ def automated_process(api_keys: Dict[str, str]) -> Dict[str, Any]:
 
                 if result:
                     results[module_name] = result
-                    print(f"\n{Fore.GREEN}[+] {module_name} Results:{Style.RESET_ALL}")
-                    
-                    if isinstance(result, dict):
-                        for key, value in result.items():
-                            print(f"  {key}: {value}")
-                    elif isinstance(result, list):
-                        for item in result:
-                            print(f"  - {item}")
-                    else:
-                        print(f"  {result}")
+                    print(format_scan_results(result, module_name))
                 else:
                     print(f"{Fore.YELLOW}[-] {module_name} module returned no results{Style.RESET_ALL}")
 
@@ -1004,7 +1018,17 @@ def automated_process(api_keys: Dict[str, str]) -> Dict[str, Any]:
                 print(f"{Fore.RED}[-] Error in {module_name} module: {str(e)}{Style.RESET_ALL}")
                 print(f"{Fore.RED}{traceback.format_exc()}{Style.RESET_ALL}")
 
-    #return results                  
+        # Print final summary
+        print_final_summary(results)
+        
+        # Save output option
+        save_output(results, target_url)
+
+    except Exception as e:
+        print(f"{Fore.RED}[-] Unexpected error during reconnaissance: {e}{Style.RESET_ALL}")
+        print(f"{Fore.RED}{traceback.format_exc()}{Style.RESET_ALL}")
+        
+    #return results         
                  
         # HTTP Headers (no result storage)
         #fetch_http_headers(target_url)
@@ -1135,6 +1159,56 @@ def manual_process(api_keys):
         
         else:
             print(f"{Fore.RED}[-] Invalid choice. Please try again.{Style.RESET_ALL}")
+
+def format_scan_results(results, module_name):
+    """Format scan results with improved readability and organization."""
+    output = []
+    
+    output.append(f"\n{'='*50}")
+    output.append(f"📊 {module_name} Results")
+    output.append(f"{'='*50}\n")
+    
+    if isinstance(results, dict):
+        for key, value in results.items():
+            if value:
+                output.append(f"🔹 {key}:")
+                if isinstance(value, list):
+                    for item in value:
+                        output.append(f"  • {item}")
+                else:
+                    output.append(f"  • {value}")
+                output.append("")
+    elif isinstance(results, list):
+        for item in results:
+            output.append(f"  • {item}")
+    else:
+        output.append(str(results))
+    
+    return "\n".join(output)
+
+def print_final_summary(all_results):
+    """Print a final summary of all scan results."""
+    print("\n" + "="*50)
+    print("🎯 RECON Scan Summary")
+    print("="*50 + "\n")
+    
+    print("📌 Key Findings:")
+    if all_results.get('DNS_Records'):
+        print(f"  • Found {len(all_results['DNS_Records'].get('A', []))} A records")
+        print(f"  • Found {len(all_results['DNS_Records'].get('MX', []))} MX records")
+    
+    if all_results.get('Subdomains'):
+        print(f"  • Discovered {len(all_results['Subdomains'])} subdomains")
+    
+    if all_results.get('Web_Technologies'):
+        tech_count = sum(len(v) for v in all_results['Web_Technologies'].values() if isinstance(v, list))
+        print(f"  • Identified {tech_count} web technologies")
+    
+    print("\n🔒 Security Status:")
+    if all_results.get('SSL_Info'):
+        ssl_info = all_results['SSL_Info']
+        print(f"  • SSL Certificate valid until: {ssl_info.get('not_after', 'N/A')}")
+        
 
 def main():
     print_banner()
