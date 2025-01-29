@@ -145,6 +145,43 @@ setup_api_keys() {
    echo -e "${GREEN}[+] API keys configuration file created at ${API_KEYS_FILE}${NC}"
 }
 
+# Function to setup global command access
+setup_global_command() {
+   echo -e "${YELLOW}[*] Setting up global command access...${NC}"
+   
+   # Get the absolute path of the script directory
+   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+   # Create directory for the tool
+   mkdir -p /opt/recon_scanner
+
+   # Copy all files to /opt/recon_scanner
+   cp -r "$SCRIPT_DIR"/* /opt/recon_scanner/
+
+   # Create wrapper script in /usr/local/bin
+   cat << 'EOF' > /usr/local/bin/recon
+#!/bin/bash
+cd /opt/recon_scanner
+python3 recon.py "$@"
+EOF
+
+   # Make the wrapper script executable
+   chmod +x /usr/local/bin/recon
+
+   # Set appropriate permissions
+   chmod -R 755 /opt/recon_scanner
+   chown -R $USER:$USER /opt/recon_scanner
+
+   # Verify installation
+   if command -v recon &> /dev/null; then
+      echo -e "${GREEN}[+] Global command setup successful!${NC}"
+      echo -e "${BLUE}[*] You can now run the tool from anywhere using the command: ${NC}recon"
+      echo -e "${BLUE}[*] For scans requiring root privileges, use: ${NC}sudo recon"
+   else
+      echo -e "${RED}[!] Global command setup failed${NC}"
+   fi
+}
+
 # Main installation process
 main() {
    echo -e "${BLUE}[*] ReconTool Automated Installer${NC}"
@@ -178,8 +215,11 @@ main() {
    # Setup API keys configuration
    setup_api_keys
 
+   # Setup global command access
+   setup_global_command
+
    echo -e "${GREEN}[+] ReconTool installation complete!${NC}"
-   echo -e "${BLUE}[*] You can now run the ReconTool${NC}"
+   echo -e "${BLUE}[*] You can now run the ReconTool from any directory using the ${NC}recon${BLUE} command${NC}"
    echo -e "${YELLOW}[*] Don't forget to add your API keys in ${API_KEYS_FILE}${NC}"
 }
 
