@@ -545,9 +545,7 @@ def print_manual_menu():
 {Fore.CYAN}[12]{Fore.RESET} Back to Main Menu
 {Style.RESET_ALL}"""
     print(menu)
-
-import socket
-
+    
 def resolve_dns(domain):
     """
     Enhanced DNS resolution with multiple record types and fallback
