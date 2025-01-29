@@ -1,5 +1,10 @@
 # 🔍 RECON Scanner: Advanced Reconnaissance Tool
 
+### Quick Links
+- [🛠️ Installation Instructions](#%EF%B8%8F-installation)
+- [🚦 Usage Guide](#-usage)
+- [🔧 Configuration](#-configuration)
+
 ## 🌟 Overview
 
 RECON Scanner is a powerful, optimized reconnaissance tool designed for comprehensive domain and network analysis. Developed with ARM and x86 architectures in mind, this tool provides advanced scanning and enumeration capabilities for security professionals, researchers, and penetration testers.
@@ -83,6 +88,16 @@ chmod +x install_recon_tools.sh
 sudo bash install_recon_tools.sh
 ```
 
+After installation, the tool can be run from any directory using:
+```bash
+recon
+```
+
+For scans requiring root privileges:
+```bash
+sudo recon
+```
+
 ### Manual Installation
 
 #### System Dependencies
@@ -134,8 +149,14 @@ BATCH_SIZE = 50     # Configurable batch size
 ## 🚦 Usage
 
 ### Running the Tool
+Simply type `recon` from any directory to launch the tool:
 ```bash
-python3 recon.py
+recon
+```
+
+For operations requiring root privileges:
+```bash
+sudo recon
 ```
 
 ### Menu Options
@@ -172,6 +193,7 @@ python3 recon.py
 - Confirm API keys are correctly configured
 - Check tool permissions
 - Report issues with detailed system specifications
+- If the `recon` command isn't found, try restarting your terminal or running `source /etc/profile`
 
 ## 📜 License
 [To be added - Currently no specific license]
@@ -183,5 +205,3 @@ python3 recon.py
 
 ---
 💡 **Made with ❤️ for Cybersecurity Professionals**
-
----
